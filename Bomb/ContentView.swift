@@ -782,10 +782,6 @@ struct PanelBackground: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 18)
             .fill(.black.opacity(0.16))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(.yellow.opacity(0.45), lineWidth: 1)
-            }
     }
 }
 
