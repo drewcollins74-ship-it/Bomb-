@@ -572,12 +572,25 @@ struct Game {
 
         let chosenValue = playValue(for: chosenCard)
         let matchingCards = hand.filter { playValue(for: $0) == chosenValue }
+        let selectedCards: [PlayingCard]
 
-        guard isLegalPlay(cards: matchingCards) else {
+        switch chosenValue {
+        case .normal:
+            selectedCards = matchingCards
+        case .two, .ten, .joker:
+            let neededForBomb = 4 - trailingMatchCount(for: chosenValue)
+            if (1...matchingCards.count).contains(neededForBomb) {
+                selectedCards = Array(matchingCards.prefix(neededForBomb))
+            } else {
+                selectedCards = [chosenCard]
+            }
+        }
+
+        guard isLegalPlay(cards: selectedCards) else {
             return nil
         }
 
-        return matchingCards
+        return selectedCards
     }
 
     private func isLegalPlay(cards: [PlayingCard]) -> Bool {
@@ -628,11 +641,13 @@ struct Game {
             return false
         }
 
-        let trailingMatchCount = playPile.reversed().prefix { card in
-            playValue(for: card) == trailingValue
-        }.count
+        return trailingMatchCount(for: trailingValue) >= 4
+    }
 
-        return trailingMatchCount >= 4
+    private func trailingMatchCount(for value: PlayValue) -> Int {
+        playPile.reversed().prefix { card in
+            playValue(for: card) == value
+        }.count
     }
 
     private mutating func clearPlayPile() {
