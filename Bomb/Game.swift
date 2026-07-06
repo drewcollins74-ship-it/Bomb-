@@ -266,9 +266,9 @@ struct Game {
 
         switch source {
         case .hand:
-            if let card = lowestLegalCard(in: players[playerIndex].hand) {
+            if let cards = bestComputerHandPlay(in: players[playerIndex].hand) {
                 _ = applyHandPlay(
-                    cardIDs: [card.id],
+                    cardIDs: Set(cards.map(\.id)),
                     forPlayerAt: playerIndex
                 )
             } else {
@@ -372,11 +372,11 @@ struct Game {
 
         switch activeSource(forPlayerAt: playerIndex) {
         case .hand:
-            guard let card = lowestLegalCard(in: players[playerIndex].hand) else {
+            guard let cards = bestComputerHandPlay(in: players[playerIndex].hand) else {
                 return nil
             }
 
-            return PlannedComputerPlay(cards: [card], faceDownIndex: nil)
+            return PlannedComputerPlay(cards: cards, faceDownIndex: nil)
 
         case .faceUpSetup:
             guard let card = lowestLegalCard(in: players[playerIndex].faceUpCards) else {
@@ -563,6 +563,21 @@ struct Game {
             .filter { isLegalPlay(cards: [$0]) }
             .sorted { computerCardStrategyScore($0) < computerCardStrategyScore($1) }
             .first
+    }
+
+    private func bestComputerHandPlay(in hand: [PlayingCard]) -> [PlayingCard]? {
+        guard let chosenCard = lowestLegalCard(in: hand) else {
+            return nil
+        }
+
+        let chosenValue = playValue(for: chosenCard)
+        let matchingCards = hand.filter { playValue(for: $0) == chosenValue }
+
+        guard isLegalPlay(cards: matchingCards) else {
+            return nil
+        }
+
+        return matchingCards
     }
 
     private func isLegalPlay(cards: [PlayingCard]) -> Bool {
