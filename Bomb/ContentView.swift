@@ -1044,10 +1044,42 @@ struct GameScreen: View {
 
                 Spacer()
 
-                Button("Play") {
+                Button {
                     playSelectedHandCards()
+                } label: {
+                    Text("Play")
+                        .font(.system(size: metrics.labelFontSize, weight: .bold))
+                        .foregroundStyle(playButtonIsEnabled(
+                            activeSource: activeSource,
+                            isLocalTurn: isLocalTurn
+                        ) ? .black : .white.opacity(0.55))
+                        .padding(.horizontal, metrics.playButtonHorizontalPadding)
+                        .padding(.vertical, metrics.playButtonVerticalPadding)
+                        .frame(minWidth: metrics.playButtonMinWidth)
+                        .background(
+                            Capsule()
+                                .fill(playButtonIsEnabled(
+                                    activeSource: activeSource,
+                                    isLocalTurn: isLocalTurn
+                                ) ? Color.yellow : Color.black.opacity(0.28))
+                        )
+                        .overlay {
+                            Capsule()
+                                .stroke(.white.opacity(playButtonIsEnabled(
+                                    activeSource: activeSource,
+                                    isLocalTurn: isLocalTurn
+                                ) ? 0 : 0.25), lineWidth: 1)
+                        }
+                        .shadow(
+                            color: playButtonIsEnabled(
+                                activeSource: activeSource,
+                                isLocalTurn: isLocalTurn
+                            ) ? .black.opacity(0.28) : .clear,
+                            radius: 4,
+                            y: 2
+                        )
                 }
-                .font(.system(size: metrics.labelFontSize, weight: .semibold))
+                .buttonStyle(.plain)
                 .disabled(
                     isGameFrozen ||
                     isLocalTurn == false ||
@@ -1097,6 +1129,19 @@ struct GameScreen: View {
             isActive: isLocalTurn,
             compact: metrics.isShortScreen
         )
+    }
+
+    private func playButtonIsEnabled(
+        activeSource: ActiveCardSource,
+        isLocalTurn: Bool
+    ) -> Bool {
+        isGameFrozen == false &&
+        isLocalTurn &&
+        cardPlayAnimation == nil &&
+        playPilePickupAnimation == nil &&
+        playPileExplosion == nil &&
+        activeSource == .hand &&
+        selectedHandCardIDs.isEmpty == false
     }
 
     @ViewBuilder
@@ -1719,6 +1764,18 @@ struct GameScreenMetrics {
 
     var labelFontSize: CGFloat {
         clamp(safeHeight * 0.017, min: 12, max: 15)
+    }
+
+    var playButtonHorizontalPadding: CGFloat {
+        clamp(contentWidth * 0.04, min: 14, max: 20)
+    }
+
+    var playButtonVerticalPadding: CGFloat {
+        clamp(safeHeight * 0.008, min: 6, max: 9)
+    }
+
+    var playButtonMinWidth: CGFloat {
+        clamp(contentWidth * 0.18, min: 62, max: 82)
     }
 
     var turnFontSize: CGFloat {
