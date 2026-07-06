@@ -1025,9 +1025,11 @@ struct PlayerBadge: View {
                 .layoutPriority(1)
 
             if let count {
-                Text("\(count)")
+                Text("Hand: \(count)")
                     .font(.system(size: compact ? 12 : 17, weight: .semibold))
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .padding(.horizontal, compact ? 7 : 10)
                     .padding(.vertical, compact ? 2 : 4)
                     .background(
