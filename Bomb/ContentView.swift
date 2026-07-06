@@ -780,8 +780,7 @@ struct CircleButton: View {
 
 struct PanelBackground: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 18)
-            .fill(.black.opacity(0.16))
+        Color.clear
     }
 }
 
