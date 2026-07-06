@@ -685,6 +685,10 @@ struct GameScreen: View {
         .padding(.vertical, metrics.panelPadding)
         .frame(maxWidth: .infinity)
         .background(PanelBackground())
+        .activePlayerIndicator(
+            isActive: isLocalTurn,
+            compact: metrics.isShortScreen
+        )
     }
 
     @ViewBuilder
@@ -767,7 +771,8 @@ struct GameScreen: View {
                         opponent: opponent,
                         color: opponentColor(at: index),
                         cardWidth: metrics.opponentCardWidth,
-                        compact: metrics.isShortScreen
+                        compact: metrics.isShortScreen,
+                        isActive: game.players[game.currentPlayerIndex].id == opponent.id
                     )
                     .frame(maxWidth: .infinity)
                     .playAnimationAnchor(.opponent(opponent.id))
@@ -782,15 +787,25 @@ struct GameScreen: View {
 
     private func tableCenter(metrics: GameScreenMetrics) -> some View {
         VStack(spacing: metrics.centerInnerSpacing) {
-            Text(game.lastActionMessage ?? (game.currentPlayerIndex == game.localPlayerIndex ? "Your Turn" : "\(game.players[game.currentPlayerIndex].name)'s Turn"))
-                .font(.system(size: metrics.turnFontSize, weight: .semibold))
-                .foregroundStyle(.green)
-                .padding(.horizontal, metrics.titleHorizontalPadding)
-                .padding(.vertical, metrics.compactPadding)
-                .background(
-                    Capsule()
-                        .fill(.black.opacity(0.35))
+            HStack(spacing: metrics.compactPadding) {
+                Text(game.lastActionMessage ?? (game.currentPlayerIndex == game.localPlayerIndex ? "Your Turn" : "\(game.players[game.currentPlayerIndex].name)'s Turn"))
+                    .font(.system(size: metrics.turnFontSize, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .padding(.horizontal, metrics.titleHorizontalPadding)
+                    .padding(.vertical, metrics.compactPadding)
+                    .background(
+                        Capsule()
+                            .fill(.black.opacity(0.35))
+                    )
+
+                DirectionBadge(
+                    direction: game.direction,
+                    fontSize: metrics.turnFontSize,
+                    padding: metrics.compactPadding
                 )
+            }
 
             HStack(alignment: .bottom) {
                 VStack(spacing: metrics.pileInnerSpacing) {
@@ -948,6 +963,74 @@ struct PlayedCardsGroup: View {
                     .offset(y: CGFloat(index) * 2)
                     .zIndex(Double(index))
             }
+        }
+    }
+}
+
+struct ActivePlayerIndicatorModifier: ViewModifier {
+    let isActive: Bool
+    let compact: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(isActive ? 3 : 0)
+            .overlay {
+                if isActive {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.yellow.opacity(0.95), lineWidth: 2)
+                        .shadow(color: .yellow.opacity(0.45), radius: 6)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isActive {
+                    Text("Playing")
+                        .font(.system(size: compact ? 9 : 10, weight: .bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, compact ? 6 : 7)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(.yellow))
+                        .offset(x: 4, y: -5)
+                }
+            }
+    }
+}
+
+extension View {
+    func activePlayerIndicator(isActive: Bool, compact: Bool) -> some View {
+        modifier(
+            ActivePlayerIndicatorModifier(
+                isActive: isActive,
+                compact: compact
+            )
+        )
+    }
+}
+
+struct DirectionBadge: View {
+    let direction: PlayDirection
+    let fontSize: CGFloat
+    let padding: CGFloat
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: fontSize, weight: .semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, padding * 1.5)
+            .padding(.vertical, padding)
+            .background(
+                Capsule()
+                    .fill(.black.opacity(0.35))
+            )
+    }
+
+    private var label: String {
+        switch direction {
+        case .clockwise:
+            return "↻ Clockwise"
+        case .counterclockwise:
+            return "↺ Counterclockwise"
         }
     }
 }
@@ -1295,6 +1378,7 @@ struct OpponentTableView: View {
     let color: Color
     let cardWidth: CGFloat
     var compact: Bool = false
+    var isActive: Bool = false
 
     var body: some View {
         VStack(spacing: compact ? 4 : 8) {
@@ -1324,6 +1408,10 @@ struct OpponentTableView: View {
                 spacing: max(3, cardWidth * 0.12)
             )
         }
+        .activePlayerIndicator(
+            isActive: isActive,
+            compact: compact
+        )
     }
 }
 

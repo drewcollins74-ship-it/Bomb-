@@ -522,7 +522,7 @@ struct Game {
     private func lowestLegalCard(in cards: [PlayingCard]) -> PlayingCard? {
         cards
             .filter { isLegalPlay(cards: [$0]) }
-            .sorted { cardSortScore($0) < cardSortScore($1) }
+            .sorted { computerCardStrategyScore($0) < computerCardStrategyScore($1) }
             .first
     }
 
@@ -716,6 +716,19 @@ struct Game {
             return 10
         case .joker:
             return 15
+        }
+    }
+
+    private func computerCardStrategyScore(_ card: PlayingCard) -> Int {
+        switch playValue(for: card) {
+        case .normal(let rank):
+            return rank.rawValue
+        case .two:
+            return 100
+        case .joker:
+            return 101
+        case .ten:
+            return 102
         }
     }
 
