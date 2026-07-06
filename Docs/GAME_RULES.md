@@ -295,10 +295,15 @@ Exact sequence:
 - Computer players use the same legality engine as the human player.
 - Computer players follow the same phase rules as the human player.
 - In hand phase, computer players use the existing simple deterministic strategy to choose which legal rank to play.
-- After a computer chooses a rank in hand phase, it plays all cards of that rank from its hand together as one play.
+- After a computer chooses an ordinary non-special rank in hand phase, it plays all cards of that rank from its hand together as one play.
 - The grouped computer play must obey the same multi-card legality rules as a human play: all cards in the group share the same rank and the chosen rank is legal.
 - A grouped computer play may complete a Bomb and must resolve through the normal Bomb logic.
-- The all-matching-cards rule applies only to hand phase. In face-up setup phase, the current rule remains one face-up setup card per play.
+- Special cards are excluded from automatic all-matching-card grouping.
+- When a computer chooses a 2, 10, or Joker, it normally plays exactly one such card.
+- The computer should not waste multiple special cards in one play when one card produces the full special effect.
+- If matching special cards can complete a Bomb, the computer may play only the minimum number needed to complete that Bomb; otherwise it plays exactly one special card.
+- Human players remain free to play multiple same-rank special cards when legal.
+- The automatic grouping rule applies only to hand phase. In face-up setup phase, the current rule remains one face-up setup card per play.
 - In face-up setup phase, computer players use the existing simple deterministic play strategy among legal face-up setup cards.
 - In face-down phase, computer players choose randomly without inspecting hidden values.
 - Do not invent undocumented computer strategy.
@@ -321,12 +326,13 @@ The rules above are authoritative. The current implementation should be checked 
   - Relevant file: `Bomb/Game.swift`
   - Mismatch: forced pickup currently depends on `pickUpPlayPileForCurrentPlayer()`, which refuses empty Play Piles. The rules also state a player cannot pick up an empty Play Pile, so the empty-pile/no-legal-play edge case needs explicit handling if it can occur.
 
-- Rule: In hand phase, after a computer chooses a legal rank, it plays all cards of that rank together as one play.
+- Rule: Computer players automatically group all matching cards only for ordinary non-special ranks; 2, 10, and Joker normally play one at a time unless the minimum matching group is needed to complete a Bomb.
   - Relevant file: `Bomb/Game.swift`
-  - Mismatch: current computer planning and execution select a single `lowestLegalCard(in:)`, so computer players currently play only one card even when they hold additional cards of the same chosen rank.
+  - Mismatch: current `bestComputerHandPlay(in:)` groups every card matching the chosen `PlayValue`, including all matching 2s, 10s, and Jokers.
 
 ## 23. Rule Change Log
 
 - 2026-07-06: Initial authoritative gameplay specification created.
 - 2026-07-06: Added random dealer selection, left-of-dealer first turn, opening Play Pile seed card, and explicit special opening seed-card behavior.
 - 2026-07-06: Added required computer hand behavior to play all cards of the chosen rank together as one play.
+- 2026-07-06: Refined computer grouping strategy so ordinary ranks are grouped, while 2s, 10s, and Jokers normally play one at a time unless the minimum matching group completes a Bomb.
