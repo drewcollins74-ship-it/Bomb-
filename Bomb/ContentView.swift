@@ -957,7 +957,14 @@ struct GameScreenMetrics {
     }
 
     var playPileCardWidth: CGFloat {
-        pileCardWidth * 0.68
+        let stackWidthFactor: CGFloat = 2.64
+        let centerColumnWidth = contentWidth / 3
+        let widthBased = (centerColumnWidth - compactPadding) / stackWidthFactor
+        return clamp(
+            min(handCardWidth, pileCardWidth, widthBased),
+            min: pileCardWidth * 0.68,
+            max: handCardWidth
+        )
     }
 
     private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
