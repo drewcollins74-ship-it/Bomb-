@@ -24,6 +24,8 @@ struct ContentView: View {
                     selectedHandCardIDs: selectedHandCardIDs,
                     toggleHandCardSelection: toggleHandCardSelection,
                     playSelectedHandCards: playSelectedHandCards,
+                    playFaceUpCard: playFaceUpCard,
+                    playFaceDownCard: playFaceDownCard,
                     pickUpPlayPile: pickUpPlayPile
                 )
                 .onAppear {
@@ -87,6 +89,24 @@ struct ContentView: View {
 
     private func playSelectedHandCards() {
         guard game?.playLocalCards(cardIDs: selectedHandCardIDs) == true else {
+            return
+        }
+
+        selectedHandCardIDs.removeAll()
+        scheduleComputerTurnIfNeeded()
+    }
+
+    private func playFaceUpCard(_ card: PlayingCard) {
+        guard game?.playLocalFaceUpCard(cardID: card.id) == true else {
+            return
+        }
+
+        selectedHandCardIDs.removeAll()
+        scheduleComputerTurnIfNeeded()
+    }
+
+    private func playFaceDownCard(at index: Int) {
+        guard game?.playLocalFaceDownCard(at: index) == true else {
             return
         }
 
@@ -374,6 +394,8 @@ struct GameScreen: View {
     let selectedHandCardIDs: Set<PlayingCard.ID>
     let toggleHandCardSelection: (PlayingCard) -> Void
     let playSelectedHandCards: () -> Void
+    let playFaceUpCard: (PlayingCard) -> Void
+    let playFaceDownCard: (Int) -> Void
     let pickUpPlayPile: () -> Void
 
     var body: some View {
@@ -443,6 +465,8 @@ struct GameScreen: View {
 
     private func localPlayerSection(metrics: GameScreenMetrics) -> some View {
         let localPlayer = game.localPlayer
+        let activeSource = game.localPlayerActiveSource
+        let isLocalTurn = game.currentPlayerIndex == game.localPlayerIndex
 
         return VStack(spacing: metrics.playerInnerSpacing) {
             PlayerBadge(
@@ -456,11 +480,11 @@ struct GameScreen: View {
                 .font(.system(size: metrics.labelFontSize, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
 
-            TableCardPilesView(
-                faceUpCards: localPlayer.faceUpCards,
-                faceDownCount: localPlayer.faceDownCards.count,
-                cardWidth: metrics.playerSetupCardWidth,
-                spacing: metrics.playerSetupSpacing
+            localSetupCards(
+                for: localPlayer,
+                metrics: metrics,
+                activeSource: activeSource,
+                isLocalTurn: isLocalTurn
             )
 
             HStack {
@@ -475,7 +499,8 @@ struct GameScreen: View {
                 }
                 .font(.system(size: metrics.labelFontSize, weight: .semibold))
                 .disabled(
-                    game.currentPlayerIndex != game.localPlayerIndex ||
+                    isLocalTurn == false ||
+                    activeSource != .hand ||
                     selectedHandCardIDs.isEmpty
                 )
             }
@@ -495,7 +520,7 @@ struct GameScreen: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .disabled(game.currentPlayerIndex != game.localPlayerIndex)
+                        .disabled(isLocalTurn == false || activeSource != .hand)
                     }
                 }
                 .padding(.horizontal, metrics.handScrollHorizontalPadding)
@@ -506,6 +531,68 @@ struct GameScreen: View {
         .padding(.vertical, metrics.panelPadding)
         .frame(maxWidth: .infinity)
         .background(PanelBackground())
+    }
+
+    @ViewBuilder
+    private func localSetupCards(
+        for localPlayer: Player,
+        metrics: GameScreenMetrics,
+        activeSource: ActiveCardSource,
+        isLocalTurn: Bool
+    ) -> some View {
+        switch activeSource {
+        case .faceUpSetup:
+            HStack(spacing: metrics.playerSetupSpacing) {
+                ForEach(0..<max(localPlayer.faceUpCards.count, localPlayer.faceDownCards.count), id: \.self) { index in
+                    if index < localPlayer.faceUpCards.count {
+                        let card = localPlayer.faceUpCards[index]
+
+                        Button {
+                            playFaceUpCard(card)
+                        } label: {
+                            TableCardPileView(
+                                faceUpCard: card,
+                                showsFaceDownCard: index < localPlayer.faceDownCards.count,
+                                cardWidth: metrics.playerSetupCardWidth
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isLocalTurn == false)
+                    } else {
+                        CardBackView(width: metrics.playerSetupCardWidth)
+                            .frame(
+                                width: metrics.playerSetupCardWidth,
+                                height: PlayingCardLayout.stackedHeight(forWidth: metrics.playerSetupCardWidth)
+                            )
+                    }
+                }
+            }
+
+        case .faceDown:
+            HStack(spacing: metrics.playerSetupSpacing) {
+                ForEach(localPlayer.faceDownCards.indices, id: \.self) { index in
+                    Button {
+                        playFaceDownCard(index)
+                    } label: {
+                        CardBackView(width: metrics.playerSetupCardWidth)
+                            .frame(
+                                width: metrics.playerSetupCardWidth,
+                                height: PlayingCardLayout.stackedHeight(forWidth: metrics.playerSetupCardWidth)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLocalTurn == false)
+                }
+            }
+
+        default:
+            TableCardPilesView(
+                faceUpCards: localPlayer.faceUpCards,
+                faceDownCount: localPlayer.faceDownCards.count,
+                cardWidth: metrics.playerSetupCardWidth,
+                spacing: metrics.playerSetupSpacing
+            )
+        }
     }
 
     private func opponentsSection(metrics: GameScreenMetrics) -> some View {
@@ -571,6 +658,7 @@ struct GameScreen: View {
                     .font(.system(size: metrics.playPileFontSize, weight: .semibold))
                     .disabled(
                         game.currentPlayerIndex != game.localPlayerIndex ||
+                        game.localPlayerActiveSource.allowsVoluntaryPickup == false ||
                         game.playPile.isEmpty
                     )
                 }
@@ -1017,12 +1105,20 @@ struct TableCardPilesView: View {
     }
 
     private var piles: some View {
-        ForEach(Array(faceUpCards.enumerated()), id: \.element.id) { index, card in
-            TableCardPileView(
-                faceUpCard: card,
-                showsFaceDownCard: index < faceDownCount,
-                cardWidth: cardWidth
-            )
+        ForEach(0..<max(faceUpCards.count, faceDownCount), id: \.self) { index in
+            if index < faceUpCards.count {
+                TableCardPileView(
+                    faceUpCard: faceUpCards[index],
+                    showsFaceDownCard: index < faceDownCount,
+                    cardWidth: cardWidth
+                )
+            } else {
+                CardBackView(width: cardWidth)
+                    .frame(
+                        width: cardWidth,
+                        height: PlayingCardLayout.stackedHeight(forWidth: cardWidth)
+                    )
+            }
         }
     }
 }

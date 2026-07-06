@@ -19,6 +19,7 @@ struct Game {
     var isSetupComplete: Bool
     var lastActionMessage: String?
     var currentRankRestriction: Rank?
+    var winnerIndex: Int?
 
     var localPlayer: Player {
         players[localPlayerIndex]
@@ -32,6 +33,10 @@ struct Game {
         players[localPlayerIndex].hand.contains { card in
             isLegalPlay(cards: [card])
         }
+    }
+
+    var localPlayerActiveSource: ActiveCardSource {
+        activeSource(forPlayerAt: localPlayerIndex)
     }
 
     init(
@@ -67,6 +72,7 @@ struct Game {
         self.isSetupComplete = false
         self.lastActionMessage = nil
         self.currentRankRestriction = nil
+        self.winnerIndex = nil
 
         dealInitialCards()
         sortAllHands()
@@ -151,8 +157,10 @@ struct Game {
 
     mutating func playLocalCards(cardIDs: Set<PlayingCard.ID>) -> Bool {
         guard isSetupComplete,
+              winnerIndex == nil,
               currentPlayerIndex == localPlayerIndex,
-              applyPlay(
+              activeSource(forPlayerAt: localPlayerIndex) == .hand,
+              applyHandPlay(
                 cardIDs: cardIDs,
                 forPlayerAt: localPlayerIndex
               ) else {
@@ -162,9 +170,40 @@ struct Game {
         return true
     }
 
+    mutating func playLocalFaceUpCard(cardID: PlayingCard.ID) -> Bool {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              currentPlayerIndex == localPlayerIndex,
+              activeSource(forPlayerAt: localPlayerIndex) == .faceUpSetup,
+              applyFaceUpPlay(
+                cardID: cardID,
+                forPlayerAt: localPlayerIndex
+              ) else {
+            return false
+        }
+
+        return true
+    }
+
+    mutating func playLocalFaceDownCard(at index: Int) -> Bool {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              currentPlayerIndex == localPlayerIndex,
+              activeSource(forPlayerAt: localPlayerIndex) == .faceDown else {
+            return false
+        }
+
+        return applyFaceDownPlay(
+            cardIndex: index,
+            forPlayerAt: localPlayerIndex
+        )
+    }
+
     mutating func pickUpPlayPileForLocalPlayer() -> Bool {
         guard isSetupComplete,
+              winnerIndex == nil,
               currentPlayerIndex == localPlayerIndex,
+              activeSource(forPlayerAt: localPlayerIndex).allowsVoluntaryPickup,
               playPile.isEmpty == false else {
             return false
         }
@@ -174,26 +213,84 @@ struct Game {
 
     mutating func playCurrentComputerTurn() -> Bool {
         guard isSetupComplete,
+              winnerIndex == nil,
               players[currentPlayerIndex].kind == .computer else {
             return false
         }
 
         let playerIndex = currentPlayerIndex
+        let source = activeSource(forPlayerAt: playerIndex)
 
-        if let card = lowestLegalCard(in: players[playerIndex].hand) {
-            _ = applyPlay(
-                cardIDs: [card.id],
+        switch source {
+        case .hand:
+            if let card = lowestLegalCard(in: players[playerIndex].hand) {
+                _ = applyHandPlay(
+                    cardIDs: [card.id],
+                    forPlayerAt: playerIndex
+                )
+            } else {
+                _ = pickUpPlayPileForCurrentPlayer()
+            }
+
+        case .faceUpSetup:
+            if let card = lowestLegalCard(in: players[playerIndex].faceUpCards) {
+                _ = applyFaceUpPlay(
+                    cardID: card.id,
+                    forPlayerAt: playerIndex
+                )
+            } else {
+                _ = pickUpPlayPileForCurrentPlayer()
+            }
+
+        case .faceDown:
+            guard players[playerIndex].faceDownCards.isEmpty == false else {
+                winnerIndex = playerIndex
+                return true
+            }
+
+            let randomIndex = Int.random(in: players[playerIndex].faceDownCards.indices)
+            _ = applyFaceDownPlay(
+                cardIndex: randomIndex,
                 forPlayerAt: playerIndex
             )
-        } else {
-            _ = pickUpPlayPileForCurrentPlayer()
+
+        case .waitingForDrawPileToEmpty:
+            refillHand(forPlayerAt: playerIndex)
+            if players[playerIndex].hand.isEmpty {
+                advanceTurn()
+            }
+
+        case .won:
+            winnerIndex = playerIndex
+            advanceTurn()
         }
 
         return true
     }
 
+    private func activeSource(forPlayerAt playerIndex: Int) -> ActiveCardSource {
+        if players[playerIndex].hand.isEmpty == false {
+            return .hand
+        }
+
+        if drawPile.isEmpty == false {
+            return .waitingForDrawPileToEmpty
+        }
+
+        if players[playerIndex].faceUpCards.isEmpty == false {
+            return .faceUpSetup
+        }
+
+        if players[playerIndex].faceDownCards.isEmpty == false {
+            return .faceDown
+        }
+
+        return .won
+    }
+
     private mutating func pickUpPlayPileForCurrentPlayer() -> Bool {
-        guard playPile.isEmpty == false else {
+        guard playPile.isEmpty == false,
+              activeSource(forPlayerAt: currentPlayerIndex).allowsVoluntaryPickup else {
             return false
         }
 
@@ -204,14 +301,7 @@ struct Game {
         return true
     }
 
-    private func lowestLegalCard(in hand: [PlayingCard]) -> PlayingCard? {
-        hand
-            .filter { isLegalPlay(cards: [$0]) }
-            .sorted { cardSortScore($0) < cardSortScore($1) }
-            .first
-    }
-
-    private mutating func applyPlay(
+    private mutating func applyHandPlay(
         cardIDs: Set<PlayingCard.ID>,
         forPlayerAt playerIndex: Int
     ) -> Bool {
@@ -223,17 +313,78 @@ struct Game {
         }
 
         players[playerIndex].hand.removeAll { cardIDs.contains($0.id) }
-        playPile.append(contentsOf: selectedCards)
         sortHand(forPlayerAt: playerIndex)
 
+        return resolvePlayedCards(
+            selectedCards,
+            forPlayerAt: playerIndex,
+            refillsHand: true
+        )
+    }
+
+    private mutating func applyFaceUpPlay(
+        cardID: PlayingCard.ID,
+        forPlayerAt playerIndex: Int
+    ) -> Bool {
+        guard let cardIndex = players[playerIndex].faceUpCards.firstIndex(where: { $0.id == cardID }) else {
+            return false
+        }
+
+        let card = players[playerIndex].faceUpCards[cardIndex]
+
+        guard isLegalPlay(cards: [card]) else {
+            return false
+        }
+
+        players[playerIndex].faceUpCards.remove(at: cardIndex)
+
+        return resolvePlayedCards(
+            [card],
+            forPlayerAt: playerIndex,
+            refillsHand: false
+        )
+    }
+
+    private mutating func applyFaceDownPlay(
+        cardIndex: Int,
+        forPlayerAt playerIndex: Int
+    ) -> Bool {
+        guard players[playerIndex].faceDownCards.indices.contains(cardIndex) else {
+            return false
+        }
+
+        let card = players[playerIndex].faceDownCards.remove(at: cardIndex)
+
+        if isLegalPlay(cards: [card]) {
+            return resolvePlayedCards(
+                [card],
+                forPlayerAt: playerIndex,
+                refillsHand: false
+            )
+        } else {
+            playPile.append(card)
+            pickUpPlayPile(forPlayerAt: playerIndex)
+            lastActionMessage = "\(players[playerIndex].name) revealed \(rankDescription(for: card)) and picked up the Play Pile"
+            advanceTurn()
+            return true
+        }
+    }
+
+    private mutating func resolvePlayedCards(
+        _ selectedCards: [PlayingCard],
+        forPlayerAt playerIndex: Int,
+        refillsHand: Bool
+    ) -> Bool {
+        playPile.append(contentsOf: selectedCards)
         updateRankRestriction(afterPlaying: selectedCards)
 
         if jokerCount(in: selectedCards).isMultiple(of: 2) == false {
             reverseDirection()
         }
 
-        let clearsPile = containsTen(selectedCards) || hasTrailingBomb()
         let completedBomb = hasTrailingBomb()
+        let clearedWithTen = containsTen(selectedCards)
+        let clearsPile = clearedWithTen || completedBomb
 
         if clearsPile {
             clearPlayPile()
@@ -242,11 +393,19 @@ struct Game {
         lastActionMessage = actionMessage(
             playerName: players[playerIndex].name,
             playedCards: selectedCards,
-            clearedWithTen: containsTen(selectedCards),
+            clearedWithTen: clearedWithTen,
             completedBomb: completedBomb
         )
 
-        refillHand(forPlayerAt: playerIndex)
+        if refillsHand {
+            refillHand(forPlayerAt: playerIndex)
+        }
+
+        if playerHasWon(playerIndex) {
+            winnerIndex = playerIndex
+            lastActionMessage = "\(players[playerIndex].name) won"
+            return true
+        }
 
         if clearsPile {
             currentPlayerIndex = playerIndex
@@ -255,6 +414,19 @@ struct Game {
         }
 
         return true
+    }
+
+    private func playerHasWon(_ playerIndex: Int) -> Bool {
+        players[playerIndex].hand.isEmpty &&
+        players[playerIndex].faceUpCards.isEmpty &&
+        players[playerIndex].faceDownCards.isEmpty
+    }
+
+    private func lowestLegalCard(in cards: [PlayingCard]) -> PlayingCard? {
+        cards
+            .filter { isLegalPlay(cards: [$0]) }
+            .sorted { cardSortScore($0) < cardSortScore($1) }
+            .first
     }
 
     private func isLegalPlay(cards: [PlayingCard]) -> Bool {
@@ -485,4 +657,16 @@ private enum PlayValue: Equatable {
     case two
     case ten
     case joker
+}
+
+enum ActiveCardSource: Equatable {
+    case hand
+    case waitingForDrawPileToEmpty
+    case faceUpSetup
+    case faceDown
+    case won
+
+    var allowsVoluntaryPickup: Bool {
+        self == .hand || self == .faceUpSetup
+    }
 }
