@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var selectedHandCardIDs: Set<PlayingCard.ID> = []
     @State private var isAutoPlayingComputerTurn = false
     @State private var cardPlayAnimation: CardPlayAnimation?
+    @State private var isShowingNewGameConfirmation = false
 
     var body: some View {
         if let game {
@@ -28,8 +29,22 @@ struct ContentView: View {
                     playSelectedHandCards: playSelectedHandCards,
                     playFaceUpCard: playFaceUpCard,
                     playFaceDownCard: playFaceDownCard,
-                    pickUpPlayPile: pickUpPlayPile
+                    pickUpPlayPile: pickUpPlayPile,
+                    requestNewGame: requestNewGame
                 )
+                .confirmationDialog(
+                    "Start New Game?",
+                    isPresented: $isShowingNewGameConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Start New Game", role: .destructive) {
+                        resetToNewGameSetup()
+                    }
+
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Your current game progress will be lost.")
+                }
                 .onAppear {
                     scheduleComputerTurnIfNeeded()
                 }
@@ -65,6 +80,19 @@ struct ContentView: View {
             localPlayerName: localPlayerName,
             computerPlayerNames: computerPlayerNames
         )
+    }
+
+    private func requestNewGame() {
+        isShowingNewGameConfirmation = true
+    }
+
+    private func resetToNewGameSetup() {
+        selectedSetupCardIDs.removeAll()
+        selectedHandCardIDs.removeAll()
+        isAutoPlayingComputerTurn = false
+        cardPlayAnimation = nil
+        isShowingNewGameConfirmation = false
+        game = nil
     }
 
     private func toggleSetupCardSelection(_ card: PlayingCard) {
@@ -501,6 +529,7 @@ struct GameScreen: View {
     let playFaceUpCard: (PlayingCard) -> Void
     let playFaceDownCard: (Int) -> Void
     let pickUpPlayPile: () -> Void
+    let requestNewGame: () -> Void
 
     var body: some View {
         GeometryReader { geometry in
@@ -588,6 +617,21 @@ struct GameScreen: View {
                 systemName: "line.3.horizontal",
                 size: metrics.iconButtonSize
             )
+
+            Button {
+                requestNewGame()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: metrics.iconButtonSize * 0.42))
+                    .foregroundStyle(.white)
+                    .frame(width: metrics.iconButtonSize, height: metrics.iconButtonSize)
+                    .background(
+                        Circle()
+                            .fill(.black.opacity(0.35))
+                            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                    )
+            }
+            .buttonStyle(.plain)
 
             Spacer()
 
