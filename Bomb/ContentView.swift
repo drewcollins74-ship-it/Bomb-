@@ -869,7 +869,7 @@ struct GameScreenMetrics {
     }
 
     var playPileCardWidth: CGFloat {
-        pileCardWidth * 0.78
+        pileCardWidth * 0.68
     }
 
     private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
@@ -1150,21 +1150,17 @@ struct PlayPileStackView: View {
                             .foregroundStyle(.white.opacity(0.75))
                     }
             } else {
-                ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
-                    let stackIndex = CGFloat(index - visibleCards.count + 1)
-
-                    CardView(card: card, width: cardWidth)
-                        .overlay(alignment: .topLeading) {
-                            PlayPileCornerLabel(
-                                card: card,
-                                width: cardWidth
-                            )
-                        }
-                        .offset(
-                            x: stackIndex * cardWidth * 0.46,
-                            y: stackIndex * cardWidth * 0.32
-                        )
-                        .zIndex(Double(index))
+                HStack(spacing: -cardWidth * 0.18) {
+                    ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
+                        CardView(card: card, width: cardWidth)
+                            .overlay(alignment: .topLeading) {
+                                PlayPileCornerLabel(
+                                    card: card,
+                                    width: cardWidth
+                                )
+                            }
+                            .zIndex(Double(index))
+                    }
                 }
             }
         }
@@ -1177,8 +1173,8 @@ struct PlayPileStackView: View {
                 .offset(x: 10, y: -10)
         }
         .frame(
-            width: cardWidth + cardWidth * 0.92,
-            height: PlayingCardLayout.height(forWidth: cardWidth) + cardWidth * 0.64
+            width: cardWidth * 2.64,
+            height: PlayingCardLayout.height(forWidth: cardWidth)
         )
     }
 }

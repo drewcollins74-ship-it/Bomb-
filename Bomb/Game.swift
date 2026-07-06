@@ -18,6 +18,7 @@ struct Game {
     var localPlayerIndex: Int
     var isSetupComplete: Bool
     var lastActionMessage: String?
+    var currentRankRestriction: Rank?
 
     var localPlayer: Player {
         players[localPlayerIndex]
@@ -65,8 +66,10 @@ struct Game {
         self.localPlayerIndex = 0
         self.isSetupComplete = false
         self.lastActionMessage = nil
+        self.currentRankRestriction = nil
 
         dealInitialCards()
+        sortAllHands()
         chooseComputerFaceUpCards()
     }
 
@@ -132,6 +135,7 @@ struct Game {
         }
 
         players[playerIndex].hand.removeAll { cardIDs.contains($0.id) }
+        sortHand(forPlayerAt: playerIndex)
         players[playerIndex].faceUpCards.append(contentsOf: selectedCards)
         return true
     }
@@ -220,6 +224,9 @@ struct Game {
 
         players[playerIndex].hand.removeAll { cardIDs.contains($0.id) }
         playPile.append(contentsOf: selectedCards)
+        sortHand(forPlayerAt: playerIndex)
+
+        updateRankRestriction(afterPlaying: selectedCards)
 
         if jokerCount(in: selectedCards).isMultiple(of: 2) == false {
             reverseDirection()
@@ -268,21 +275,6 @@ struct Game {
         }
     }
 
-    private var currentRankRestriction: Rank? {
-        guard let topCard = playPile.last else {
-            return nil
-        }
-
-        switch playValue(for: topCard) {
-        case .two, .joker:
-            return nil
-        case .ten:
-            return nil
-        case .normal(let rank):
-            return rank
-        }
-    }
-
     private func playValue(for cards: [PlayingCard]) -> PlayValue? {
         guard let firstCard = cards.first else {
             return nil
@@ -323,11 +315,29 @@ struct Game {
     private mutating func clearPlayPile() {
         discardPile.append(contentsOf: playPile)
         playPile.removeAll()
+        currentRankRestriction = nil
     }
 
     private mutating func pickUpPlayPile(forPlayerAt playerIndex: Int) {
         players[playerIndex].hand.append(contentsOf: playPile)
+        sortHand(forPlayerAt: playerIndex)
         playPile.removeAll()
+        currentRankRestriction = nil
+    }
+
+    private mutating func updateRankRestriction(afterPlaying cards: [PlayingCard]) {
+        guard let playValue = playValue(for: cards) else {
+            return
+        }
+
+        switch playValue {
+        case .two, .ten:
+            currentRankRestriction = nil
+        case .joker:
+            break
+        case .normal(let rank):
+            currentRankRestriction = rank
+        }
     }
 
     private mutating func refillHand(forPlayerAt playerIndex: Int) {
@@ -335,6 +345,8 @@ struct Game {
               let card = drawPile.popLast() {
             players[playerIndex].hand.append(card)
         }
+
+        sortHand(forPlayerAt: playerIndex)
     }
 
     private mutating func advanceTurn() {
@@ -429,6 +441,41 @@ struct Game {
             return 10
         case .joker:
             return 15
+        }
+    }
+
+    private mutating func sortAllHands() {
+        for index in players.indices {
+            sortHand(forPlayerAt: index)
+        }
+    }
+
+    private mutating func sortHand(forPlayerAt playerIndex: Int) {
+        players[playerIndex].hand.sort {
+            Game.handSortPriority(for: $0) < Game.handSortPriority(for: $1)
+        }
+    }
+
+    private static func handSortPriority(for card: PlayingCard) -> Int {
+        switch card.kind {
+        case .joker:
+            return 0
+        case .standard(_, let rank):
+            switch rank {
+            case .ten: return 1
+            case .two: return 2
+            case .ace: return 3
+            case .king: return 4
+            case .queen: return 5
+            case .jack: return 6
+            case .nine: return 7
+            case .eight: return 8
+            case .seven: return 9
+            case .six: return 10
+            case .five: return 11
+            case .four: return 12
+            case .three: return 13
+            }
         }
     }
 }
