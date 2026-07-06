@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var selectedHandCardIDs: Set<PlayingCard.ID> = []
     @State private var isAutoPlayingComputerTurn = false
     @State private var cardPlayAnimation: CardPlayAnimation?
+    @State private var playPileExplosion: PlayPileExplosion?
     @State private var isShowingNewGameConfirmation = false
     @State private var isShowingForcedPickupAlert = false
 
@@ -26,6 +27,7 @@ struct ContentView: View {
                     game: game,
                     selectedHandCardIDs: selectedHandCardIDs,
                     cardPlayAnimation: cardPlayAnimation,
+                    playPileExplosion: playPileExplosion,
                     toggleHandCardSelection: toggleHandCardSelection,
                     playSelectedHandCards: playSelectedHandCards,
                     playFaceUpCard: playFaceUpCard,
@@ -104,6 +106,7 @@ struct ContentView: View {
         selectedHandCardIDs.removeAll()
         isAutoPlayingComputerTurn = false
         cardPlayAnimation = nil
+        playPileExplosion = nil
         isShowingNewGameConfirmation = false
         isShowingForcedPickupAlert = false
         game = nil
@@ -134,14 +137,17 @@ struct ContentView: View {
 
     private func playSelectedHandCards() {
         guard cardPlayAnimation == nil,
+              playPileExplosion == nil,
               let cards = game?.legalLocalHandCards(cardIDs: selectedHandCardIDs) else {
             return
         }
 
         let cardIDs = selectedHandCardIDs
+        let clearPreview = game?.playPileClearPreview(afterPlaying: cards)
 
         Task {
             await animatePlayedCards(cards, from: .localHand)
+            await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
                 guard game?.playLocalCards(cardIDs: cardIDs) == true else {
@@ -157,12 +163,16 @@ struct ContentView: View {
 
     private func playFaceUpCard(_ card: PlayingCard) {
         guard cardPlayAnimation == nil,
+              playPileExplosion == nil,
               let playedCard = game?.legalLocalFaceUpCard(cardID: card.id) else {
             return
         }
 
+        let clearPreview = game?.playPileClearPreview(afterPlaying: [playedCard])
+
         Task {
             await animatePlayedCards([playedCard], from: .localSetup)
+            await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
                 guard game?.playLocalFaceUpCard(cardID: card.id) == true else {
@@ -178,12 +188,16 @@ struct ContentView: View {
 
     private func playFaceDownCard(at index: Int) {
         guard cardPlayAnimation == nil,
+              playPileExplosion == nil,
               let playedCard = game?.localFaceDownCard(at: index) else {
             return
         }
 
+        let clearPreview = game?.playPileClearPreview(afterPlaying: [playedCard])
+
         Task {
             await animatePlayedCards([playedCard], from: .localSetup)
+            await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
                 guard game?.playLocalFaceDownCard(at: index) == true else {
@@ -198,7 +212,9 @@ struct ContentView: View {
     }
 
     private func pickUpPlayPile() {
-        guard game?.pickUpPlayPileForLocalPlayer() == true else {
+        guard cardPlayAnimation == nil,
+              playPileExplosion == nil,
+              game?.pickUpPlayPileForLocalPlayer() == true else {
             return
         }
 
@@ -211,6 +227,7 @@ struct ContentView: View {
         guard isShowingForcedPickupAlert == false,
               isAutoPlayingComputerTurn == false,
               cardPlayAnimation == nil,
+              playPileExplosion == nil,
               game?.localPlayerRequiresForcedPickup == true else {
             return
         }
@@ -235,6 +252,7 @@ struct ContentView: View {
               let game,
               game.isSetupComplete,
               cardPlayAnimation == nil,
+              playPileExplosion == nil,
               isShowingForcedPickupAlert == false,
               game.players[game.currentPlayerIndex].kind == .computer else {
             return
@@ -249,22 +267,31 @@ struct ContentView: View {
                 guard let game = self.game,
                       game.players[game.currentPlayerIndex].kind == .computer else {
                     self.isAutoPlayingComputerTurn = false
-                    return nil as (cards: [PlayingCard], source: PlayAnimationSource, faceDownIndex: Int?)?
+                    return nil as (
+                        cards: [PlayingCard],
+                        source: PlayAnimationSource,
+                        faceDownIndex: Int?,
+                        clearPreview: PlayPileClearPreview?
+                    )?
                 }
 
                 guard let plannedPlay = game.plannedCurrentComputerPlay() else {
                     return nil
                 }
 
+                let clearPreview = game.playPileClearPreview(afterPlaying: plannedPlay.cards)
+
                 return (
                     cards: plannedPlay.cards,
                     source: .opponent(game.players[game.currentPlayerIndex].id),
-                    faceDownIndex: plannedPlay.faceDownIndex
+                    faceDownIndex: plannedPlay.faceDownIndex,
+                    clearPreview: clearPreview
                 )
             }
 
             if let plannedPlay {
                 await animatePlayedCards(plannedPlay.cards, from: plannedPlay.source)
+                await animatePlayPileExplosionIfNeeded(plannedPlay.clearPreview)
             }
 
             await MainActor.run {
@@ -311,6 +338,28 @@ struct ContentView: View {
         try? await Task.sleep(nanoseconds: 520_000_000)
         cardPlayAnimation = nil
     }
+
+    @MainActor
+    private func animatePlayPileExplosionIfNeeded(_ preview: PlayPileClearPreview?) async {
+        guard let preview else {
+            return
+        }
+
+        playPileExplosion = PlayPileExplosion(
+            cards: preview.cards,
+            reason: preview.reason,
+            hasExploded: false
+        )
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
+            playPileExplosion?.hasExploded = true
+        }
+
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        playPileExplosion = nil
+    }
 }
 
 struct CardPlayAnimation: Identifiable {
@@ -318,6 +367,13 @@ struct CardPlayAnimation: Identifiable {
     let cards: [PlayingCard]
     let source: PlayAnimationSource
     var hasArrived: Bool
+}
+
+struct PlayPileExplosion: Identifiable {
+    let id = UUID()
+    let cards: [PlayingCard]
+    let reason: PlayPileClearReason
+    var hasExploded: Bool
 }
 
 enum PlayAnimationSource: Hashable {
@@ -568,6 +624,7 @@ struct GameScreen: View {
     let game: Game
     let selectedHandCardIDs: Set<PlayingCard.ID>
     let cardPlayAnimation: CardPlayAnimation?
+    let playPileExplosion: PlayPileExplosion?
     let toggleHandCardSelection: (PlayingCard) -> Void
     let playSelectedHandCards: () -> Void
     let playFaceUpCard: (PlayingCard) -> Void
@@ -616,8 +673,18 @@ struct GameScreen: View {
                         anchors: anchors,
                         proxy: proxy,
                         metrics: metrics
-                       ) {
+                    ) {
                         overlay
+                    }
+
+                    if let playPileExplosion,
+                       let playPileAnchor = anchors[.playPile] {
+                        PlayPileExplosionOverlay(
+                            explosion: playPileExplosion,
+                            playPileFrame: proxy[playPileAnchor],
+                            cardWidth: metrics.playPileCardWidth,
+                            placeholderFontSize: metrics.playPileFontSize
+                        )
                     }
                 }
                 .allowsHitTesting(false)
@@ -737,6 +804,7 @@ struct GameScreen: View {
                 .disabled(
                     isLocalTurn == false ||
                     cardPlayAnimation != nil ||
+                    playPileExplosion != nil ||
                     activeSource != .hand ||
                     selectedHandCardIDs.isEmpty
                 )
@@ -760,6 +828,7 @@ struct GameScreen: View {
                         .disabled(
                             isLocalTurn == false ||
                             cardPlayAnimation != nil ||
+                            playPileExplosion != nil ||
                             activeSource != .hand
                         )
                     }
@@ -803,7 +872,11 @@ struct GameScreen: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .disabled(isLocalTurn == false || cardPlayAnimation != nil)
+                        .disabled(
+                            isLocalTurn == false ||
+                            cardPlayAnimation != nil ||
+                            playPileExplosion != nil
+                        )
                     } else {
                         CardBackView(width: metrics.playerSetupCardWidth)
                             .frame(
@@ -828,7 +901,11 @@ struct GameScreen: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .disabled(isLocalTurn == false || cardPlayAnimation != nil)
+                    .disabled(
+                        isLocalTurn == false ||
+                        cardPlayAnimation != nil ||
+                        playPileExplosion != nil
+                    )
                 }
             }
             .playAnimationAnchor(.localSetup)
@@ -912,6 +989,7 @@ struct GameScreen: View {
                         cardWidth: metrics.playPileCardWidth,
                         placeholderFontSize: metrics.playPileFontSize
                     )
+                    .opacity(playPileExplosion == nil ? 1 : 0)
                     .playAnimationAnchor(.playPile)
 
                     Button("Pick Up") {
@@ -921,6 +999,7 @@ struct GameScreen: View {
                     .disabled(
                         game.currentPlayerIndex != game.localPlayerIndex ||
                         cardPlayAnimation != nil ||
+                        playPileExplosion != nil ||
                         game.localPlayerActiveSource.allowsVoluntaryPickup == false ||
                         game.playPile.isEmpty
                     )
@@ -1052,6 +1131,113 @@ struct PlayedCardsGroup: View {
                     .zIndex(Double(index))
             }
         }
+    }
+}
+
+struct PlayPileExplosionOverlay: View {
+    let explosion: PlayPileExplosion
+    let playPileFrame: CGRect
+    let cardWidth: CGFloat
+    let placeholderFontSize: CGFloat
+
+    private var visibleCards: [PlayingCard] {
+        Array(explosion.cards.suffix(3))
+    }
+
+    var body: some View {
+        ZStack {
+            shockwave
+
+            ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
+                CardView(card: card, width: cardWidth)
+                    .overlay(alignment: .topLeading) {
+                        PlayPileCornerLabel(
+                            card: card,
+                            width: cardWidth
+                        )
+                    }
+                    .offset(cardOffset(at: index))
+                    .rotationEffect(.degrees(cardRotation(at: index)))
+                    .scaleEffect(cardScale(at: index))
+                    .opacity(explosion.hasExploded ? 0 : 1)
+                    .zIndex(Double(index) + 1)
+            }
+
+            if explosion.hasExploded == false {
+                Text("\(explosion.cards.count)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(Circle().fill(.black.opacity(0.5)))
+                    .offset(
+                        x: cardWidth * 1.32 + 10,
+                        y: -PlayingCardLayout.height(forWidth: cardWidth) / 2 - 10
+                    )
+                    .zIndex(10)
+            }
+        }
+        .frame(
+            width: max(playPileFrame.width, cardWidth * 3.4),
+            height: max(playPileFrame.height, PlayingCardLayout.height(forWidth: cardWidth) * 2.4)
+        )
+        .position(
+            x: playPileFrame.midX,
+            y: playPileFrame.midY
+        )
+        .allowsHitTesting(false)
+        .zIndex(200)
+    }
+
+    private var shockwave: some View {
+        Circle()
+            .stroke(.yellow.opacity(explosion.hasExploded ? 0 : 0.65), lineWidth: 2)
+            .frame(
+                width: explosion.hasExploded ? cardWidth * 4.0 : cardWidth * 0.9,
+                height: explosion.hasExploded ? cardWidth * 4.0 : cardWidth * 0.9
+            )
+            .scaleEffect(explosion.hasExploded ? 1.2 : 0.4)
+            .opacity(explosion.hasExploded ? 0 : 1)
+            .zIndex(0)
+    }
+
+    private func cardOffset(at index: Int) -> CGSize {
+        let centeredIndex = CGFloat(index) - CGFloat(max(visibleCards.count - 1, 0)) / 2
+        let restingOffset = CGSize(
+            width: centeredIndex * cardWidth * 0.82,
+            height: 0
+        )
+
+        guard explosion.hasExploded else {
+            return restingOffset
+        }
+
+        let angle = burstAngle(at: index) * .pi / 180
+        let distance = cardWidth * (1.25 + CGFloat(index) * 0.22)
+
+        return CGSize(
+            width: restingOffset.width + cos(angle) * distance,
+            height: restingOffset.height + sin(angle) * distance
+        )
+    }
+
+    private func cardRotation(at index: Int) -> Double {
+        guard explosion.hasExploded else {
+            return 0
+        }
+
+        return [-28, 18, 34][index % 3]
+    }
+
+    private func cardScale(at index: Int) -> CGFloat {
+        guard explosion.hasExploded else {
+            return 1
+        }
+
+        return [1.08, 0.92, 1.02][index % 3]
+    }
+
+    private func burstAngle(at index: Int) -> CGFloat {
+        [-145, -70, 25][index % 3]
     }
 }
 

@@ -64,6 +64,26 @@ struct Game {
         }
     }
 
+    func playPileClearPreview(afterPlaying cards: [PlayingCard]) -> PlayPileClearPreview? {
+        guard isLegalPlay(cards: cards) else {
+            return nil
+        }
+
+        let completedPile = playPile + cards
+        let completedBomb = hasTrailingBomb(in: completedPile)
+        let clearedWithTen = containsTen(cards)
+
+        if completedBomb {
+            return PlayPileClearPreview(cards: completedPile, reason: .bomb)
+        }
+
+        if clearedWithTen {
+            return PlayPileClearPreview(cards: completedPile, reason: .ten)
+        }
+
+        return nil
+    }
+
     init(
         localPlayerName: String,
         computerPlayerNames: [String]
@@ -660,16 +680,24 @@ struct Game {
     }
 
     private func hasTrailingBomb() -> Bool {
-        guard playPile.count >= 4,
-              let trailingValue = playPile.last.map(playValue(for:)) else {
+        hasTrailingBomb(in: playPile)
+    }
+
+    private func hasTrailingBomb(in cards: [PlayingCard]) -> Bool {
+        guard cards.count >= 4,
+              let trailingValue = cards.last.map(playValue(for:)) else {
             return false
         }
 
-        return trailingMatchCount(for: trailingValue) >= 4
+        return trailingMatchCount(in: cards, for: trailingValue) >= 4
     }
 
     private func trailingMatchCount(for value: PlayValue) -> Int {
-        playPile.reversed().prefix { card in
+        trailingMatchCount(in: playPile, for: value)
+    }
+
+    private func trailingMatchCount(in cards: [PlayingCard], for value: PlayValue) -> Int {
+        cards.reversed().prefix { card in
             playValue(for: card) == value
         }.count
     }
@@ -883,4 +911,14 @@ enum ActiveCardSource: Equatable {
 struct PlannedComputerPlay {
     let cards: [PlayingCard]
     let faceDownIndex: Int?
+}
+
+struct PlayPileClearPreview {
+    let cards: [PlayingCard]
+    let reason: PlayPileClearReason
+}
+
+enum PlayPileClearReason {
+    case ten
+    case bomb
 }
