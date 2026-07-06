@@ -202,6 +202,17 @@ Examples:
 - Current design requirement: the Play control acts on the currently selected legal cards.
 - Current design requirement: selection and legality come from current game state.
 - Current design requirement: disabled state must reflect turn, phase, selected cards, and active presentation animations.
+- Current design requirement: the local human Play control must visually read as a primary action button, not as plain text or a subtle text-only control.
+- Current design requirement: use a filled capsule or rounded-rectangle treatment with strong contrast against the surrounding table background.
+- Current design requirement: provide a comfortable iPhone tap target and readable button label.
+- Current design requirement: keep the Play button in the same general area of the local player section.
+- Current design requirement: do not significantly rearrange the local hand, setup cards, footer, or overall bottom-of-screen layout solely to accommodate the button.
+- Current design requirement: minor local spacing adjustments are allowed when needed to prevent overlap or preserve a comfortable tap target.
+- Current design requirement: enabled and disabled states must both remain clearly recognizable as button states.
+- Current design requirement: the enabled state should be visually prominent as the human player's primary action.
+- Current design requirement: the disabled state should appear inactive without disappearing or reverting to plain text.
+- Current design requirement: visual prominence must not change gameplay logic, card selection behavior, or when Play is permitted.
+- Current design requirement: the Play button must not overlap hand cards, setup-card labels, or other controls at supported iPhone sizes.
 
 ### Voluntary Pick Up
 
@@ -559,3 +570,4 @@ Do not resolve these without explicit instruction.
 - 2026-07-06: Authoritative UI specification created.
 - 2026-07-06: Added required modal win notification behavior for local human and computer winners, including animation sequencing, game freeze, duplicate prevention, and New Game flow.
 - 2026-07-06: Added required Play Pile pickup animation so the pile slides toward the receiving player as the reverse visual counterpart of normal card-play movement.
+- 2026-07-06: Made the local human Play control a required prominent primary-action button while preserving the existing bottom-of-screen layout.
