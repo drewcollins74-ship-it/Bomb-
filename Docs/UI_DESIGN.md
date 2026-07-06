@@ -256,7 +256,84 @@ Requirements:
 
 Gameplay reference: actual pickup behavior is defined in Docs/GAME_RULES.md.
 
-## 14. Card Play Animation
+## 14. Win Notification
+
+Current design requirement: show a modal win notification whenever `game.winnerIndex` identifies a winner.
+
+Source of truth:
+
+- Current design requirement: the UI must not independently determine whether a player has won.
+- Current design requirement: `Game` remains the source of truth for winner state.
+- Gameplay reference: winning conditions and final-card resolution are defined in Docs/GAME_RULES.md.
+
+Required timing sequence:
+
+1. The final card completes its normal play animation.
+2. Resolve all gameplay effects from that final legal play.
+3. If the final play causes a 10 clear or Bomb, complete the Play Pile explosion animation first.
+4. If the final play uses a Joker, allow direction state to resolve normally.
+5. Confirm the winner from actual game state.
+6. Show the win notification.
+
+The win popup must not appear before the final play is visually complete.
+
+### Local Human Winner
+
+- Title: `You Win!`
+- Message: `Congratulations! You won the game.`
+- Action: `New Game`
+
+### Computer Winner
+
+- Title: `[Player Name] Wins!`
+- Example: `Computer 1 Wins!`
+- Message: `Game over.`
+- Action: `New Game`
+- Current design requirement: use the actual winning player name from game state.
+
+### New Game Action
+
+When the player taps `New Game`:
+
+- Current design requirement: return to the existing New Game setup flow.
+- Current design requirement: discard the completed game.
+- Current design requirement: clear selected card IDs.
+- Current design requirement: clear active card-play animation state.
+- Current design requirement: clear Play Pile explosion state.
+- Current design requirement: clear forced-pickup alert state.
+- Current design requirement: clear computer auto-play scheduling state.
+- Current design requirement: clear win-notification presentation state.
+- Current design requirement: do not create duplicate game-initialization logic.
+- Current design requirement: reuse the same reset/new-game flow already defined elsewhere in this specification.
+
+### Modal Behavior
+
+While the win notification is visible:
+
+- Current design requirement: no card interaction is allowed behind the modal.
+- Current design requirement: no further computer turn may begin.
+- Current design requirement: no additional gameplay mutation may occur.
+- Current design requirement: no forced-pickup notification may appear.
+- Current design requirement: no duplicate win popup may appear.
+- Current design requirement: no additional animation may start.
+- Current design requirement: the completed game remains frozen.
+
+### Presentation Consistency
+
+- Current design requirement: use the same general native SwiftUI alert/modal style as the forced-pickup notification and Start New Game confirmation.
+- Current design requirement: do not create a large custom winner screen.
+- Current design requirement: do not redesign the active game board.
+- Current design requirement: keep the presentation clear and immediate.
+- Current design requirement: the popup should visually communicate that the game is over.
+
+### Duplicate Prevention
+
+- Current design requirement: show the win popup exactly once per completed game.
+- Current design requirement: re-rendering the SwiftUI view must not present duplicate win notifications.
+- Current design requirement: computer auto-play scheduling stops as soon as a winner exists.
+- Current design requirement: starting a new game clears any stale win-notification state.
+
+## 15. Card Play Animation
 
 - Current design requirement: a played card visibly moves from the acting player area to the Play Pile.
 - Current design requirement: duration is approximately 0.4 to 0.6 seconds.
@@ -279,7 +356,7 @@ Architecture:
 - Current design requirement: use temporary presentation overlay state.
 - Current design requirement: do not make SwiftUI animation state the source of gameplay truth.
 
-## 15. Computer Turn Pacing
+## 16. Computer Turn Pacing
 
 - Current design requirement: computer actions must be visible to the human player.
 - Current design requirement: use a brief pause between computer turns.
@@ -287,9 +364,11 @@ Architecture:
 - Current design requirement: next computer action must not begin while card-play animation is active.
 - Current design requirement: next computer action must not begin while Play Pile explosion is active.
 - Current design requirement: next computer action must not begin while a modal interaction blocks progression.
+- Current design requirement: no computer action may begin after a winner exists.
+- Current design requirement: no computer action may begin while the win notification is active.
 - Current design requirement: do not rapidly skip through multiple computer actions invisibly.
 
-## 16. Play Pile Explosion
+## 17. Play Pile Explosion
 
 Current design requirement: trigger a Play Pile explosion whenever the Play Pile is cleared by:
 
@@ -334,31 +413,35 @@ Important:
 - Current design requirement: prevent overlapping explosions.
 - Current design requirement: starting a new game clears stale explosion state.
 
-## 17. Animation Architecture
+## 18. Animation Architecture
 
 - Current design requirement: gameplay state and presentation state remain separate.
-- Current design requirement: `Game.swift` is the source of truth for cards, turn, direction, legality, clears, and Bomb detection.
+- Current design requirement: `Game.swift` is the source of truth for cards, turn, direction, legality, clears, Bomb detection, and winner state.
 - Current design requirement: `ContentView.swift` and SwiftUI presentation state may manage temporary card movement.
 - Current design requirement: SwiftUI presentation state may manage explosion snapshots.
 - Current design requirement: SwiftUI presentation state may manage alert visibility.
+- Current design requirement: SwiftUI presentation state may manage win-notification visibility.
 - Current design requirement: SwiftUI presentation state may manage pacing.
+- Current design requirement: `game.winnerIndex` remains the source of truth for the winner.
+- Current design requirement: SwiftUI must not recalculate winning conditions.
 - Current design requirement: do not duplicate gameplay rules in view code.
 - Current design requirement: do not independently recalculate Bomb logic in the UI.
 
-## 18. Modal Interaction Rules
+## 19. Modal Interaction Rules
 
 While a modal alert is active:
 
 - Current design requirement: prevent unintended card interaction behind the alert.
 - Current design requirement: prevent duplicate state mutation.
-- Current design requirement: prevent computer auto-play from advancing through a human-required confirmation.
+- Current design requirement: prevent computer auto-play from advancing through a human-required confirmation or completed-game modal.
 
 Applicable alerts:
 
 - `Start New Game?`
 - `No Legal Play`
+- Win notification.
 
-## 19. Visual Consistency
+## 20. Visual Consistency
 
 - Current design requirement: preserve current overall Bomb! identity.
 - Current design requirement: avoid unnecessary visual clutter.
@@ -369,7 +452,7 @@ Applicable alerts:
 - Current design requirement: preserve clear separation of interactive and informational elements.
 - Current design requirement: use subtle emphasis rather than oversized decoration.
 
-## 20. Accessibility and Usability
+## 21. Accessibility and Usability
 
 - Current design requirement: interactive controls must have reasonable tap targets.
 - Current design requirement: important game state must not rely only on color.
@@ -378,7 +461,7 @@ Applicable alerts:
 - Current design requirement: alerts must clearly state required action.
 - Current design requirement: horizontally scrollable hands must remain discoverable and usable.
 
-## 21. Open Design Decisions
+## 22. Open Design Decisions
 
 - Open design decision: exact final icon/text treatment for New Game.
 - Open design decision: exact final explosion particle intensity.
@@ -393,7 +476,7 @@ Applicable alerts:
 
 Do not resolve these without explicit instruction.
 
-## 22. Implementation Notes
+## 23. Implementation Notes
 
 - Current design requirement: avoid hard-coded layout that only works for 3 players.
 - Current design requirement: preserve mobile aspect ratios.
@@ -405,6 +488,7 @@ Do not resolve these without explicit instruction.
 - Current design requirement: use available screen geometry and safe area when calculating major layout sections.
 - Current design requirement: keep gameplay logic out of SwiftUI view bodies.
 
-## 23. UI Change Log
+## 24. UI Change Log
 
 - 2026-07-06: Authoritative UI specification created.
+- 2026-07-06: Added required modal win notification behavior for local human and computer winners, including animation sequencing, game freeze, duplicate prevention, and New Game flow.
