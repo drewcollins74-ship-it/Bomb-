@@ -212,6 +212,10 @@ struct Game {
     }
 
     mutating func playCurrentComputerTurn() -> Bool {
+        playCurrentComputerTurn(faceDownIndex: nil)
+    }
+
+    mutating func playCurrentComputerTurn(faceDownIndex: Int?) -> Bool {
         guard isSetupComplete,
               winnerIndex == nil,
               players[currentPlayerIndex].kind == .computer else {
@@ -248,7 +252,14 @@ struct Game {
                 return true
             }
 
-            let randomIndex = Int.random(in: players[playerIndex].faceDownCards.indices)
+            let randomIndex: Int
+            if let faceDownIndex,
+               players[playerIndex].faceDownCards.indices.contains(faceDownIndex) {
+                randomIndex = faceDownIndex
+            } else {
+                randomIndex = Int.random(in: players[playerIndex].faceDownCards.indices)
+            }
+
             _ = applyFaceDownPlay(
                 cardIndex: randomIndex,
                 forPlayerAt: playerIndex
@@ -266,6 +277,89 @@ struct Game {
         }
 
         return true
+    }
+
+    func legalLocalHandCards(cardIDs: Set<PlayingCard.ID>) -> [PlayingCard]? {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              currentPlayerIndex == localPlayerIndex,
+              activeSource(forPlayerAt: localPlayerIndex) == .hand else {
+            return nil
+        }
+
+        let selectedCards = players[localPlayerIndex].hand.filter { cardIDs.contains($0.id) }
+
+        guard selectedCards.count == cardIDs.count,
+              isLegalPlay(cards: selectedCards) else {
+            return nil
+        }
+
+        return selectedCards
+    }
+
+    func legalLocalFaceUpCard(cardID: PlayingCard.ID) -> PlayingCard? {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              currentPlayerIndex == localPlayerIndex,
+              activeSource(forPlayerAt: localPlayerIndex) == .faceUpSetup,
+              let card = players[localPlayerIndex].faceUpCards.first(where: { $0.id == cardID }),
+              isLegalPlay(cards: [card]) else {
+            return nil
+        }
+
+        return card
+    }
+
+    func localFaceDownCard(at index: Int) -> PlayingCard? {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              currentPlayerIndex == localPlayerIndex,
+              activeSource(forPlayerAt: localPlayerIndex) == .faceDown,
+              players[localPlayerIndex].faceDownCards.indices.contains(index) else {
+            return nil
+        }
+
+        return players[localPlayerIndex].faceDownCards[index]
+    }
+
+    func plannedCurrentComputerPlay() -> PlannedComputerPlay? {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              players[currentPlayerIndex].kind == .computer else {
+            return nil
+        }
+
+        let playerIndex = currentPlayerIndex
+
+        switch activeSource(forPlayerAt: playerIndex) {
+        case .hand:
+            guard let card = lowestLegalCard(in: players[playerIndex].hand) else {
+                return nil
+            }
+
+            return PlannedComputerPlay(cards: [card], faceDownIndex: nil)
+
+        case .faceUpSetup:
+            guard let card = lowestLegalCard(in: players[playerIndex].faceUpCards) else {
+                return nil
+            }
+
+            return PlannedComputerPlay(cards: [card], faceDownIndex: nil)
+
+        case .faceDown:
+            guard players[playerIndex].faceDownCards.isEmpty == false else {
+                return nil
+            }
+
+            let randomIndex = Int.random(in: players[playerIndex].faceDownCards.indices)
+            return PlannedComputerPlay(
+                cards: [players[playerIndex].faceDownCards[randomIndex]],
+                faceDownIndex: randomIndex
+            )
+
+        case .waitingForDrawPileToEmpty, .won:
+            return nil
+        }
     }
 
     private func activeSource(forPlayerAt playerIndex: Int) -> ActiveCardSource {
@@ -669,4 +763,9 @@ enum ActiveCardSource: Equatable {
     var allowsVoluntaryPickup: Bool {
         self == .hand || self == .faceUpSetup
     }
+}
+
+struct PlannedComputerPlay {
+    let cards: [PlayingCard]
+    let faceDownIndex: Int?
 }

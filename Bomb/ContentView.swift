@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var selectedSetupCardIDs: Set<PlayingCard.ID> = []
     @State private var selectedHandCardIDs: Set<PlayingCard.ID> = []
     @State private var isAutoPlayingComputerTurn = false
+    @State private var cardPlayAnimation: CardPlayAnimation?
 
     var body: some View {
         if let game {
@@ -22,6 +23,7 @@ struct ContentView: View {
                 GameScreen(
                     game: game,
                     selectedHandCardIDs: selectedHandCardIDs,
+                    cardPlayAnimation: cardPlayAnimation,
                     toggleHandCardSelection: toggleHandCardSelection,
                     playSelectedHandCards: playSelectedHandCards,
                     playFaceUpCard: playFaceUpCard,
@@ -88,30 +90,65 @@ struct ContentView: View {
     }
 
     private func playSelectedHandCards() {
-        guard game?.playLocalCards(cardIDs: selectedHandCardIDs) == true else {
+        guard cardPlayAnimation == nil,
+              let cards = game?.legalLocalHandCards(cardIDs: selectedHandCardIDs) else {
             return
         }
 
-        selectedHandCardIDs.removeAll()
-        scheduleComputerTurnIfNeeded()
+        let cardIDs = selectedHandCardIDs
+
+        Task {
+            await animatePlayedCards(cards, from: .localHand)
+
+            await MainActor.run {
+                guard game?.playLocalCards(cardIDs: cardIDs) == true else {
+                    return
+                }
+
+                selectedHandCardIDs.removeAll()
+                scheduleComputerTurnIfNeeded()
+            }
+        }
     }
 
     private func playFaceUpCard(_ card: PlayingCard) {
-        guard game?.playLocalFaceUpCard(cardID: card.id) == true else {
+        guard cardPlayAnimation == nil,
+              let playedCard = game?.legalLocalFaceUpCard(cardID: card.id) else {
             return
         }
 
-        selectedHandCardIDs.removeAll()
-        scheduleComputerTurnIfNeeded()
+        Task {
+            await animatePlayedCards([playedCard], from: .localSetup)
+
+            await MainActor.run {
+                guard game?.playLocalFaceUpCard(cardID: card.id) == true else {
+                    return
+                }
+
+                selectedHandCardIDs.removeAll()
+                scheduleComputerTurnIfNeeded()
+            }
+        }
     }
 
     private func playFaceDownCard(at index: Int) {
-        guard game?.playLocalFaceDownCard(at: index) == true else {
+        guard cardPlayAnimation == nil,
+              let playedCard = game?.localFaceDownCard(at: index) else {
             return
         }
 
-        selectedHandCardIDs.removeAll()
-        scheduleComputerTurnIfNeeded()
+        Task {
+            await animatePlayedCards([playedCard], from: .localSetup)
+
+            await MainActor.run {
+                guard game?.playLocalFaceDownCard(at: index) == true else {
+                    return
+                }
+
+                selectedHandCardIDs.removeAll()
+                scheduleComputerTurnIfNeeded()
+            }
+        }
     }
 
     private func pickUpPlayPile() {
@@ -127,6 +164,7 @@ struct ContentView: View {
         guard isAutoPlayingComputerTurn == false,
               let game,
               game.isSetupComplete,
+              cardPlayAnimation == nil,
               game.players[game.currentPlayerIndex].kind == .computer else {
             return
         }
@@ -136,6 +174,28 @@ struct ContentView: View {
         Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
 
+            let plannedPlay = await MainActor.run {
+                guard let game = self.game,
+                      game.players[game.currentPlayerIndex].kind == .computer else {
+                    self.isAutoPlayingComputerTurn = false
+                    return nil as (cards: [PlayingCard], source: PlayAnimationSource, faceDownIndex: Int?)?
+                }
+
+                guard let plannedPlay = game.plannedCurrentComputerPlay() else {
+                    return nil
+                }
+
+                return (
+                    cards: plannedPlay.cards,
+                    source: .opponent(game.players[game.currentPlayerIndex].id),
+                    faceDownIndex: plannedPlay.faceDownIndex
+                )
+            }
+
+            if let plannedPlay {
+                await animatePlayedCards(plannedPlay.cards, from: plannedPlay.source)
+            }
+
             await MainActor.run {
                 guard let game = self.game,
                       game.players[game.currentPlayerIndex].kind == .computer else {
@@ -143,12 +203,55 @@ struct ContentView: View {
                     return
                 }
 
-                _ = self.game?.playCurrentComputerTurn()
+                if let plannedPlay {
+                    _ = self.game?.playCurrentComputerTurn(faceDownIndex: plannedPlay.faceDownIndex)
+                } else {
+                    _ = self.game?.playCurrentComputerTurn()
+                }
+
                 self.isAutoPlayingComputerTurn = false
                 self.scheduleComputerTurnIfNeeded()
             }
         }
     }
+
+    @MainActor
+    private func animatePlayedCards(
+        _ cards: [PlayingCard],
+        from source: PlayAnimationSource
+    ) async {
+        guard cards.isEmpty == false else {
+            return
+        }
+
+        cardPlayAnimation = CardPlayAnimation(
+            cards: cards,
+            source: source,
+            hasArrived: false
+        )
+
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        withAnimation(.easeInOut(duration: 0.5)) {
+            cardPlayAnimation?.hasArrived = true
+        }
+
+        try? await Task.sleep(nanoseconds: 520_000_000)
+        cardPlayAnimation = nil
+    }
+}
+
+struct CardPlayAnimation: Identifiable {
+    let id = UUID()
+    let cards: [PlayingCard]
+    let source: PlayAnimationSource
+    var hasArrived: Bool
+}
+
+enum PlayAnimationSource: Hashable {
+    case localHand
+    case localSetup
+    case opponent(Player.ID)
 }
 
 struct NewGameView: View {
@@ -392,6 +495,7 @@ struct FaceUpSetupMetrics {
 struct GameScreen: View {
     let game: Game
     let selectedHandCardIDs: Set<PlayingCard.ID>
+    let cardPlayAnimation: CardPlayAnimation?
     let toggleHandCardSelection: (PlayingCard) -> Void
     let playSelectedHandCards: () -> Void
     let playFaceUpCard: (PlayingCard) -> Void
@@ -431,6 +535,50 @@ struct GameScreen: View {
                 .padding(.top, metrics.topPadding)
                 .padding(.bottom, metrics.bottomPadding)
             }
+            .overlayPreferenceValue(PlayAnimationAnchorPreferenceKey.self) { anchors in
+                GeometryReader { proxy in
+                    if let cardPlayAnimation,
+                       let overlay = playedCardAnimationOverlay(
+                        cardPlayAnimation,
+                        anchors: anchors,
+                        proxy: proxy,
+                        metrics: metrics
+                       ) {
+                        overlay
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func playedCardAnimationOverlay(
+        _ animation: CardPlayAnimation,
+        anchors: [PlayAnimationAnchorID: Anchor<CGRect>],
+        proxy: GeometryProxy,
+        metrics: GameScreenMetrics
+    ) -> PlayedCardsAnimationOverlay? {
+        guard let sourceAnchor = anchors[anchorID(for: animation.source)],
+              let playPileAnchor = anchors[.playPile] else {
+            return nil
+        }
+
+        return PlayedCardsAnimationOverlay(
+            animation: animation,
+            startRect: proxy[sourceAnchor],
+            endRect: proxy[playPileAnchor],
+            cardWidth: min(metrics.handCardWidth, metrics.playPileCardWidth)
+        )
+    }
+
+    private func anchorID(for source: PlayAnimationSource) -> PlayAnimationAnchorID {
+        switch source {
+        case .localHand:
+            return .localHand
+        case .localSetup:
+            return .localSetup
+        case .opponent(let id):
+            return .opponent(id)
         }
     }
 
@@ -500,6 +648,7 @@ struct GameScreen: View {
                 .font(.system(size: metrics.labelFontSize, weight: .semibold))
                 .disabled(
                     isLocalTurn == false ||
+                    cardPlayAnimation != nil ||
                     activeSource != .hand ||
                     selectedHandCardIDs.isEmpty
                 )
@@ -520,13 +669,18 @@ struct GameScreen: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .disabled(isLocalTurn == false || activeSource != .hand)
+                        .disabled(
+                            isLocalTurn == false ||
+                            cardPlayAnimation != nil ||
+                            activeSource != .hand
+                        )
                     }
                 }
                 .padding(.horizontal, metrics.handScrollHorizontalPadding)
             }
             .frame(height: PlayingCardLayout.height(forWidth: metrics.handCardWidth))
             .scrollIndicators(.hidden)
+            .playAnimationAnchor(.localHand)
         }
         .padding(.vertical, metrics.panelPadding)
         .frame(maxWidth: .infinity)
@@ -557,7 +711,7 @@ struct GameScreen: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .disabled(isLocalTurn == false)
+                        .disabled(isLocalTurn == false || cardPlayAnimation != nil)
                     } else {
                         CardBackView(width: metrics.playerSetupCardWidth)
                             .frame(
@@ -567,6 +721,7 @@ struct GameScreen: View {
                     }
                 }
             }
+            .playAnimationAnchor(.localSetup)
 
         case .faceDown:
             HStack(spacing: metrics.playerSetupSpacing) {
@@ -581,9 +736,10 @@ struct GameScreen: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .disabled(isLocalTurn == false)
+                    .disabled(isLocalTurn == false || cardPlayAnimation != nil)
                 }
             }
+            .playAnimationAnchor(.localSetup)
 
         default:
             TableCardPilesView(
@@ -592,6 +748,7 @@ struct GameScreen: View {
                 cardWidth: metrics.playerSetupCardWidth,
                 spacing: metrics.playerSetupSpacing
             )
+            .playAnimationAnchor(.localSetup)
         }
     }
 
@@ -613,6 +770,7 @@ struct GameScreen: View {
                         compact: metrics.isShortScreen
                     )
                     .frame(maxWidth: .infinity)
+                    .playAnimationAnchor(.opponent(opponent.id))
                 }
             }
         }
@@ -651,6 +809,7 @@ struct GameScreen: View {
                         cardWidth: metrics.playPileCardWidth,
                         placeholderFontSize: metrics.playPileFontSize
                     )
+                    .playAnimationAnchor(.playPile)
 
                     Button("Pick Up") {
                         pickUpPlayPile()
@@ -658,6 +817,7 @@ struct GameScreen: View {
                     .font(.system(size: metrics.playPileFontSize, weight: .semibold))
                     .disabled(
                         game.currentPlayerIndex != game.localPlayerIndex ||
+                        cardPlayAnimation != nil ||
                         game.localPlayerActiveSource.allowsVoluntaryPickup == false ||
                         game.playPile.isEmpty
                     )
@@ -720,6 +880,75 @@ struct GameScreen: View {
     private func opponentColor(at index: Int) -> Color {
         let colors: [Color] = [.blue, .green, .purple, .orange]
         return colors[index % colors.count]
+    }
+}
+
+enum PlayAnimationAnchorID: Hashable {
+    case localHand
+    case localSetup
+    case opponent(Player.ID)
+    case playPile
+}
+
+struct PlayAnimationAnchorPreferenceKey: PreferenceKey {
+    static var defaultValue: [PlayAnimationAnchorID: Anchor<CGRect>] = [:]
+
+    static func reduce(
+        value: inout [PlayAnimationAnchorID: Anchor<CGRect>],
+        nextValue: () -> [PlayAnimationAnchorID: Anchor<CGRect>]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
+    }
+}
+
+extension View {
+    func playAnimationAnchor(_ id: PlayAnimationAnchorID) -> some View {
+        anchorPreference(
+            key: PlayAnimationAnchorPreferenceKey.self,
+            value: .bounds
+        ) { anchor in
+            [id: anchor]
+        }
+    }
+}
+
+struct PlayedCardsAnimationOverlay: View {
+    let animation: CardPlayAnimation
+    let startRect: CGRect
+    let endRect: CGRect
+    let cardWidth: CGFloat
+
+    private var currentCenter: CGPoint {
+        let progress: CGFloat = animation.hasArrived ? 1 : 0
+        return CGPoint(
+            x: startRect.midX + (endRect.midX - startRect.midX) * progress,
+            y: startRect.midY + (endRect.midY - startRect.midY) * progress
+        )
+    }
+
+    var body: some View {
+        PlayedCardsGroup(
+            cards: animation.cards,
+            cardWidth: cardWidth
+        )
+        .position(currentCenter)
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+        .zIndex(100)
+    }
+}
+
+struct PlayedCardsGroup: View {
+    let cards: [PlayingCard]
+    let cardWidth: CGFloat
+
+    var body: some View {
+        HStack(spacing: -cardWidth * 0.22) {
+            ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                CardView(card: card, width: cardWidth)
+                    .offset(y: CGFloat(index) * 2)
+                    .zIndex(Double(index))
+            }
+        }
     }
 }
 
@@ -1071,10 +1300,22 @@ struct OpponentTableView: View {
         VStack(spacing: compact ? 4 : 8) {
             PlayerBadge(
                 name: opponent.name,
-                count: opponent.hand.count,
+                count: nil,
                 color: color,
                 compact: true
             )
+
+            Text("Hand: \(opponent.hand.count)")
+                .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(.black.opacity(0.35))
+                )
 
             TableCardPilesView(
                 faceUpCards: opponent.faceUpCards,
