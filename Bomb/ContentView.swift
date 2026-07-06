@@ -19,6 +19,8 @@ struct ContentView: View {
     @State private var playPileExplosion: PlayPileExplosion?
     @State private var isShowingNewGameConfirmation = false
     @State private var isShowingForcedPickupAlert = false
+    @State private var isShowingWinNotification = false
+    @State private var presentedWinnerIndex: Int?
 
     var body: some View {
         if let game {
@@ -28,6 +30,7 @@ struct ContentView: View {
                     selectedHandCardIDs: selectedHandCardIDs,
                     cardPlayAnimation: cardPlayAnimation,
                     playPileExplosion: playPileExplosion,
+                    isGameFrozen: game.winnerIndex != nil || isShowingWinNotification,
                     toggleHandCardSelection: toggleHandCardSelection,
                     playSelectedHandCards: playSelectedHandCards,
                     playFaceUpCard: playFaceUpCard,
@@ -58,13 +61,28 @@ struct ContentView: View {
                 } message: {
                     Text("You must pick up the Play Pile.")
                 }
+                .alert(
+                    winNotificationTitle,
+                    isPresented: $isShowingWinNotification
+                ) {
+                    Button("New Game") {
+                        resetToNewGameSetup()
+                    }
+                } message: {
+                    Text(winNotificationMessage)
+                }
                 .onAppear {
+                    presentWinNotificationIfNeeded()
                     presentForcedPickupAlertIfNeeded()
                     scheduleComputerTurnIfNeeded()
                 }
                 .onChange(of: game.currentPlayerIndex) {
+                    presentWinNotificationIfNeeded()
                     presentForcedPickupAlertIfNeeded()
                     scheduleComputerTurnIfNeeded()
+                }
+                .onChange(of: game.winnerIndex) {
+                    presentWinNotificationIfNeeded()
                 }
             } else {
                 FaceUpSetupView(
@@ -109,6 +127,8 @@ struct ContentView: View {
         playPileExplosion = nil
         isShowingNewGameConfirmation = false
         isShowingForcedPickupAlert = false
+        isShowingWinNotification = false
+        presentedWinnerIndex = nil
         game = nil
     }
 
@@ -138,6 +158,8 @@ struct ContentView: View {
     private func playSelectedHandCards() {
         guard cardPlayAnimation == nil,
               playPileExplosion == nil,
+              isShowingWinNotification == false,
+              game?.winnerIndex == nil,
               let cards = game?.legalLocalHandCards(cardIDs: selectedHandCardIDs) else {
             return
         }
@@ -147,16 +169,23 @@ struct ContentView: View {
 
         Task {
             await animatePlayedCards(cards, from: .localHand)
+
+            let didPlay = await MainActor.run {
+                game?.playLocalCards(cardIDs: cardIDs) == true
+            }
+
+            guard didPlay else {
+                return
+            }
+
+            await MainActor.run {
+                selectedHandCardIDs.removeAll()
+            }
+
             await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
-                guard game?.playLocalCards(cardIDs: cardIDs) == true else {
-                    return
-                }
-
-                selectedHandCardIDs.removeAll()
-                presentForcedPickupAlertIfNeeded()
-                scheduleComputerTurnIfNeeded()
+                finishPostPlayPresentation()
             }
         }
     }
@@ -164,6 +193,8 @@ struct ContentView: View {
     private func playFaceUpCard(_ card: PlayingCard) {
         guard cardPlayAnimation == nil,
               playPileExplosion == nil,
+              isShowingWinNotification == false,
+              game?.winnerIndex == nil,
               let playedCard = game?.legalLocalFaceUpCard(cardID: card.id) else {
             return
         }
@@ -172,16 +203,23 @@ struct ContentView: View {
 
         Task {
             await animatePlayedCards([playedCard], from: .localSetup)
+
+            let didPlay = await MainActor.run {
+                game?.playLocalFaceUpCard(cardID: card.id) == true
+            }
+
+            guard didPlay else {
+                return
+            }
+
+            await MainActor.run {
+                selectedHandCardIDs.removeAll()
+            }
+
             await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
-                guard game?.playLocalFaceUpCard(cardID: card.id) == true else {
-                    return
-                }
-
-                selectedHandCardIDs.removeAll()
-                presentForcedPickupAlertIfNeeded()
-                scheduleComputerTurnIfNeeded()
+                finishPostPlayPresentation()
             }
         }
     }
@@ -189,6 +227,8 @@ struct ContentView: View {
     private func playFaceDownCard(at index: Int) {
         guard cardPlayAnimation == nil,
               playPileExplosion == nil,
+              isShowingWinNotification == false,
+              game?.winnerIndex == nil,
               let playedCard = game?.localFaceDownCard(at: index) else {
             return
         }
@@ -197,16 +237,23 @@ struct ContentView: View {
 
         Task {
             await animatePlayedCards([playedCard], from: .localSetup)
+
+            let didPlay = await MainActor.run {
+                game?.playLocalFaceDownCard(at: index) == true
+            }
+
+            guard didPlay else {
+                return
+            }
+
+            await MainActor.run {
+                selectedHandCardIDs.removeAll()
+            }
+
             await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
-                guard game?.playLocalFaceDownCard(at: index) == true else {
-                    return
-                }
-
-                selectedHandCardIDs.removeAll()
-                presentForcedPickupAlertIfNeeded()
-                scheduleComputerTurnIfNeeded()
+                finishPostPlayPresentation()
             }
         }
     }
@@ -214,6 +261,8 @@ struct ContentView: View {
     private func pickUpPlayPile() {
         guard cardPlayAnimation == nil,
               playPileExplosion == nil,
+              isShowingWinNotification == false,
+              game?.winnerIndex == nil,
               game?.pickUpPlayPileForLocalPlayer() == true else {
             return
         }
@@ -225,9 +274,11 @@ struct ContentView: View {
 
     private func presentForcedPickupAlertIfNeeded() {
         guard isShowingForcedPickupAlert == false,
+              isShowingWinNotification == false,
               isAutoPlayingComputerTurn == false,
               cardPlayAnimation == nil,
               playPileExplosion == nil,
+              game?.winnerIndex == nil,
               game?.localPlayerRequiresForcedPickup == true else {
             return
         }
@@ -236,7 +287,9 @@ struct ContentView: View {
     }
 
     private func confirmForcedPickup() {
-        guard game?.localPlayerRequiresForcedPickup == true else {
+        guard isShowingWinNotification == false,
+              game?.winnerIndex == nil,
+              game?.localPlayerRequiresForcedPickup == true else {
             isShowingForcedPickupAlert = false
             return
         }
@@ -251,8 +304,10 @@ struct ContentView: View {
         guard isAutoPlayingComputerTurn == false,
               let game,
               game.isSetupComplete,
+              game.winnerIndex == nil,
               cardPlayAnimation == nil,
               playPileExplosion == nil,
+              isShowingWinNotification == false,
               isShowingForcedPickupAlert == false,
               game.players[game.currentPlayerIndex].kind == .computer else {
             return
@@ -265,6 +320,7 @@ struct ContentView: View {
 
             let plannedPlay = await MainActor.run {
                 guard let game = self.game,
+                      game.winnerIndex == nil,
                       game.players[game.currentPlayerIndex].kind == .computer else {
                     self.isAutoPlayingComputerTurn = false
                     return nil as (
@@ -291,27 +347,86 @@ struct ContentView: View {
 
             if let plannedPlay {
                 await animatePlayedCards(plannedPlay.cards, from: plannedPlay.source)
+            }
+
+            let didPlay = await MainActor.run {
+                guard let game = self.game,
+                      game.winnerIndex == nil,
+                      game.players[game.currentPlayerIndex].kind == .computer else {
+                    self.isAutoPlayingComputerTurn = false
+                    return false
+                }
+
+                if let plannedPlay {
+                    return self.game?.playCurrentComputerTurn(faceDownIndex: plannedPlay.faceDownIndex) == true
+                } else {
+                    return self.game?.playCurrentComputerTurn() == true
+                }
+            }
+
+            if didPlay, let plannedPlay {
                 await animatePlayPileExplosionIfNeeded(plannedPlay.clearPreview)
             }
 
             await MainActor.run {
-                guard let game = self.game,
-                      game.players[game.currentPlayerIndex].kind == .computer else {
-                    self.isAutoPlayingComputerTurn = false
-                    return
-                }
-
-                if let plannedPlay {
-                    _ = self.game?.playCurrentComputerTurn(faceDownIndex: plannedPlay.faceDownIndex)
-                } else {
-                    _ = self.game?.playCurrentComputerTurn()
-                }
-
                 self.isAutoPlayingComputerTurn = false
-                self.presentForcedPickupAlertIfNeeded()
-                self.scheduleComputerTurnIfNeeded()
+                self.finishPostPlayPresentation()
             }
         }
+    }
+
+    private func finishPostPlayPresentation() {
+        presentWinNotificationIfNeeded()
+
+        guard game?.winnerIndex == nil else {
+            return
+        }
+
+        presentForcedPickupAlertIfNeeded()
+        scheduleComputerTurnIfNeeded()
+    }
+
+    private func presentWinNotificationIfNeeded() {
+        guard isShowingWinNotification == false,
+              cardPlayAnimation == nil,
+              playPileExplosion == nil,
+              let game,
+              let winnerIndex = game.winnerIndex,
+              presentedWinnerIndex != winnerIndex else {
+            return
+        }
+
+        presentedWinnerIndex = winnerIndex
+        isAutoPlayingComputerTurn = false
+        isShowingForcedPickupAlert = false
+        isShowingWinNotification = true
+    }
+
+    private var winNotificationTitle: String {
+        guard let game,
+              let winnerIndex = game.winnerIndex,
+              game.players.indices.contains(winnerIndex) else {
+            return "Game Over"
+        }
+
+        if winnerIndex == game.localPlayerIndex {
+            return "You Win!"
+        }
+
+        return "\(game.players[winnerIndex].name) Wins!"
+    }
+
+    private var winNotificationMessage: String {
+        guard let game,
+              let winnerIndex = game.winnerIndex else {
+            return "Game over."
+        }
+
+        if winnerIndex == game.localPlayerIndex {
+            return "Congratulations! You won the game."
+        }
+
+        return "Game over."
     }
 
     @MainActor
@@ -625,6 +740,7 @@ struct GameScreen: View {
     let selectedHandCardIDs: Set<PlayingCard.ID>
     let cardPlayAnimation: CardPlayAnimation?
     let playPileExplosion: PlayPileExplosion?
+    let isGameFrozen: Bool
     let toggleHandCardSelection: (PlayingCard) -> Void
     let playSelectedHandCards: () -> Void
     let playFaceUpCard: (PlayingCard) -> Void
@@ -802,6 +918,7 @@ struct GameScreen: View {
                 }
                 .font(.system(size: metrics.labelFontSize, weight: .semibold))
                 .disabled(
+                    isGameFrozen ||
                     isLocalTurn == false ||
                     cardPlayAnimation != nil ||
                     playPileExplosion != nil ||
@@ -826,6 +943,7 @@ struct GameScreen: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(
+                            isGameFrozen ||
                             isLocalTurn == false ||
                             cardPlayAnimation != nil ||
                             playPileExplosion != nil ||
@@ -873,6 +991,7 @@ struct GameScreen: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(
+                            isGameFrozen ||
                             isLocalTurn == false ||
                             cardPlayAnimation != nil ||
                             playPileExplosion != nil
@@ -902,6 +1021,7 @@ struct GameScreen: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(
+                        isGameFrozen ||
                         isLocalTurn == false ||
                         cardPlayAnimation != nil ||
                         playPileExplosion != nil
@@ -997,6 +1117,7 @@ struct GameScreen: View {
                     }
                     .font(.system(size: metrics.playPileFontSize, weight: .semibold))
                     .disabled(
+                        isGameFrozen ||
                         game.currentPlayerIndex != game.localPlayerIndex ||
                         cardPlayAnimation != nil ||
                         playPileExplosion != nil ||
