@@ -561,7 +561,7 @@ struct GameScreen: View {
                     PileLabel(text: "Play Pile")
                     PlayPileStackView(
                         cards: game.playPile,
-                        cardWidth: metrics.pileCardWidth,
+                        cardWidth: metrics.playPileCardWidth,
                         placeholderFontSize: metrics.playPileFontSize
                     )
 
@@ -868,6 +868,10 @@ struct GameScreenMetrics {
         clamp(pileCardWidth * 0.18, min: 9, max: 12)
     }
 
+    var playPileCardWidth: CGFloat {
+        pileCardWidth * 0.88
+    }
+
     private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
         Swift.min(Swift.max(value, minimum), maximum)
     }
@@ -1151,8 +1155,8 @@ struct PlayPileStackView: View {
 
                     CardView(card: card, width: cardWidth)
                         .offset(
-                            x: stackIndex * cardWidth * 0.16,
-                            y: stackIndex * cardWidth * 0.10
+                            x: stackIndex * cardWidth * 0.32,
+                            y: stackIndex * cardWidth * 0.20
                         )
                         .zIndex(Double(index))
                 }
@@ -1167,8 +1171,8 @@ struct PlayPileStackView: View {
                 .offset(x: 10, y: -10)
         }
         .frame(
-            width: cardWidth + cardWidth * 0.32,
-            height: PlayingCardLayout.height(forWidth: cardWidth) + cardWidth * 0.20
+            width: cardWidth + cardWidth * 0.64,
+            height: PlayingCardLayout.height(forWidth: cardWidth) + cardWidth * 0.40
         )
     }
 }
