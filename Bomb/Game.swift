@@ -392,6 +392,7 @@ struct Game {
         pickUpPlayPile(forPlayerAt: playerIndex)
         lastActionMessage = "\(players[playerIndex].name) picked up the Play Pile"
         advanceTurn()
+        refillCurrentPlayerIfWaitingForDrawPile()
         return true
     }
 
@@ -460,6 +461,7 @@ struct Game {
             pickUpPlayPile(forPlayerAt: playerIndex)
             lastActionMessage = "\(players[playerIndex].name) revealed \(rankDescription(for: card)) and picked up the Play Pile"
             advanceTurn()
+            refillCurrentPlayerIfWaitingForDrawPile()
             return true
         }
     }
@@ -507,6 +509,7 @@ struct Game {
             advanceTurn()
         }
 
+        refillCurrentPlayerIfWaitingForDrawPile()
         return true
     }
 
@@ -613,6 +616,12 @@ struct Game {
         }
 
         sortHand(forPlayerAt: playerIndex)
+    }
+
+    private mutating func refillCurrentPlayerIfWaitingForDrawPile() {
+        if activeSource(forPlayerAt: currentPlayerIndex) == .waitingForDrawPileToEmpty {
+            refillHand(forPlayerAt: currentPlayerIndex)
+        }
     }
 
     private mutating func advanceTurn() {
