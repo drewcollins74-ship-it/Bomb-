@@ -306,7 +306,8 @@ struct GameScreen: View {
         GeometryReader { geometry in
             let metrics = GameScreenMetrics(
                 size: geometry.size,
-                safeAreaInsets: geometry.safeAreaInsets
+                safeAreaInsets: geometry.safeAreaInsets,
+                opponentCount: game.opponents.count
             )
 
             ZStack {
@@ -368,7 +369,7 @@ struct GameScreen: View {
     private func localPlayerSection(metrics: GameScreenMetrics) -> some View {
         let localPlayer = game.localPlayer
 
-        return VStack(spacing: 14) {
+        return VStack(spacing: metrics.playerInnerSpacing) {
             PlayerBadge(
                 name: localPlayer.name,
                 count: nil,
@@ -408,7 +409,10 @@ struct GameScreen: View {
                 .font(.system(size: metrics.opponentsTitleFontSize, weight: .bold))
                 .foregroundStyle(.white)
 
-            HStack(spacing: metrics.opponentSpacing) {
+            LazyVGrid(
+                columns: metrics.opponentGridColumns,
+                spacing: metrics.opponentRowSpacing
+            ) {
                 ForEach(Array(game.opponents.enumerated()), id: \.element.id) { index, opponent in
                     OpponentTableView(
                         opponent: opponent,
@@ -439,7 +443,7 @@ struct GameScreen: View {
                 )
 
             HStack(alignment: .bottom) {
-                VStack(spacing: 8) {
+                VStack(spacing: metrics.pileInnerSpacing) {
                     PileLabel(text: "Draw Pile")
                     CardBackStackView(
                         count: game.drawPile.count,
@@ -448,7 +452,7 @@ struct GameScreen: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                VStack(spacing: 8) {
+                VStack(spacing: metrics.pileInnerSpacing) {
                     PileLabel(text: "Play Pile")
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(.white.opacity(0.65), style: StrokeStyle(lineWidth: 2, dash: [7]))
@@ -465,7 +469,7 @@ struct GameScreen: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                VStack(spacing: 8) {
+                VStack(spacing: metrics.pileInnerSpacing) {
                     PileLabel(text: "Discard Pile")
                     if let topDiscard = game.discardPile.last {
                         CardView(card: topDiscard, width: metrics.pileCardWidth)
@@ -527,6 +531,7 @@ struct GameScreen: View {
 struct GameScreenMetrics {
     let size: CGSize
     let safeAreaInsets: EdgeInsets
+    let opponentCount: Int
 
     private var safeHeight: CGFloat {
         size.height - safeAreaInsets.top - safeAreaInsets.bottom
@@ -569,15 +574,22 @@ struct GameScreenMetrics {
     }
 
     var playerHeight: CGFloat {
-        clamp(safeHeight * 0.35, min: 210, max: 270)
+        availableHeight - headerHeight - footerHeight - opponentsHeight - centerHeight
     }
 
     var centerHeight: CGFloat {
-        clamp(safeHeight * 0.22, min: 118, max: 165)
+        clamp(safeHeight * (opponentRows > 1 ? 0.18 : 0.21), min: 112, max: 165)
     }
 
     var opponentsHeight: CGFloat {
-        max(96, availableHeight - headerHeight - footerHeight - playerHeight - centerHeight)
+        let titleHeight = opponentsTitleFontSize * 1.4
+        let rowContentHeight = opponentBadgeHeight + opponentsInnerSpacing + PlayingCardLayout.stackedHeight(forWidth: opponentWidthBasedCardWidth)
+        let rowsHeight = CGFloat(opponentRows) * rowContentHeight
+        let rowSpacingHeight = CGFloat(max(0, opponentRows - 1)) * opponentRowSpacing
+        let desiredHeight = panelPadding * 2 + titleHeight + opponentsInnerSpacing + rowsHeight + rowSpacingHeight
+        let maximumHeight = availableHeight - headerHeight - footerHeight - centerHeight - 170
+
+        return min(desiredHeight, maximumHeight)
     }
 
     var panelPadding: CGFloat {
@@ -625,7 +637,7 @@ struct GameScreenMetrics {
     }
 
     var playerInnerSpacing: CGFloat {
-        clamp(playerHeight * 0.035, min: 5, max: 10)
+        clamp(playerHeight * 0.026, min: 5, max: 8)
     }
 
     var playerSetupSpacing: CGFloat {
@@ -638,7 +650,7 @@ struct GameScreenMetrics {
 
     var playerSetupCardWidth: CGFloat {
         let widthBased = (contentWidth - playerSetupSpacing * 2) / 3
-        let labelHeight = labelFontSize * 2.4
+        let labelHeight = labelFontSize * 2.5
         let badgeHeight: CGFloat = isShortScreen ? 28 : 34
         let available = playerHeight - panelPadding * 2 - labelHeight - badgeHeight - playerInnerSpacing * 4
         let heightBased = available / (1 / PlayingCardLayout.aspectRatio + PlayingCardLayout.stackedHeight(forWidth: 1))
@@ -651,37 +663,80 @@ struct GameScreenMetrics {
     }
 
     var opponentsInnerSpacing: CGFloat {
-        clamp(opponentsHeight * 0.05, min: 3, max: 8)
+        clamp(safeHeight * 0.008, min: 3, max: 8)
     }
 
     var opponentSpacing: CGFloat {
         clamp(contentWidth * 0.025, min: 6, max: 12)
     }
 
+    var opponentRowSpacing: CGFloat {
+        clamp(safeHeight * 0.01, min: 5, max: 9)
+    }
+
+    var opponentColumns: Int {
+        switch opponentCount {
+        case 0...1:
+            return 1
+        case 2:
+            return 2
+        case 3:
+            return 3
+        default:
+            return 2
+        }
+    }
+
+    var opponentRows: Int {
+        Int(ceil(Double(max(1, opponentCount)) / Double(opponentColumns)))
+    }
+
+    var opponentGridColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: opponentSpacing),
+            count: opponentColumns
+        )
+    }
+
+    var opponentBadgeHeight: CGFloat {
+        28
+    }
+
+    private var opponentWidthBasedCardWidth: CGFloat {
+        let columns = CGFloat(opponentColumns)
+        let availableWidth = contentWidth - panelPadding * 2 - opponentSpacing * (columns - 1)
+        let tileWidth = availableWidth / columns
+        return clamp((tileWidth - 12) / 3, min: 24, max: 44)
+    }
+
     var opponentCardWidth: CGFloat {
-        let opponentCount = CGFloat(max(1, min(4,  gameOpponentCapacity)))
-        let cardGroupWidth = (contentWidth - opponentSpacing * (opponentCount - 1)) / opponentCount
-        let widthBased = (cardGroupWidth - 10) / 3
-        let heightBased = (opponentsHeight - panelPadding * 2 - opponentsTitleFontSize * 1.4 - 26 - opponentsInnerSpacing * 2) / PlayingCardLayout.stackedHeight(forWidth: 1)
-        return clamp(min(widthBased, heightBased), min: 24, max: 44)
+        let titleHeight = opponentsTitleFontSize * 1.4
+        let availableRowsHeight = opponentsHeight - panelPadding * 2 - titleHeight - opponentsInnerSpacing - opponentRowSpacing * CGFloat(max(0, opponentRows - 1))
+        let availableTileHeight = availableRowsHeight / CGFloat(opponentRows)
+        let heightBased = (availableTileHeight - opponentBadgeHeight - opponentsInnerSpacing) / PlayingCardLayout.stackedHeight(forWidth: 1)
+
+        return clamp(min(opponentWidthBasedCardWidth, heightBased), min: 24, max: 44)
     }
 
     var centerInnerSpacing: CGFloat {
         clamp(centerHeight * 0.07, min: 5, max: 12)
     }
 
+    var pileInnerSpacing: CGFloat {
+        clamp(centerHeight * 0.04, min: 4, max: 7)
+    }
+
     var pileCardWidth: CGFloat {
         let widthBased = contentWidth / 4.2
-        let heightBased = (centerHeight - panelPadding * 2 - turnFontSize * 2.2 - centerInnerSpacing - 22) * PlayingCardLayout.aspectRatio
+        let labelHeight: CGFloat = 22
+        let turnHeight = turnFontSize + compactPadding * 2
+        let available = centerHeight - panelPadding * 2 - turnHeight - centerInnerSpacing - labelHeight - pileInnerSpacing
+        let heightBased = available * PlayingCardLayout.aspectRatio
         return clamp(min(widthBased, heightBased), min: 38, max: 62)
     }
 
     var playPileFontSize: CGFloat {
         clamp(pileCardWidth * 0.18, min: 9, max: 12)
-    }
-
-    private var gameOpponentCapacity: Int {
-        4
     }
 
     private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
