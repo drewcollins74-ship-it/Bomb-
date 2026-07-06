@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var isAutoPlayingComputerTurn = false
     @State private var cardPlayAnimation: CardPlayAnimation?
     @State private var isShowingNewGameConfirmation = false
+    @State private var isShowingForcedPickupAlert = false
 
     var body: some View {
         if let game {
@@ -45,10 +46,22 @@ struct ContentView: View {
                 } message: {
                     Text("Your current game progress will be lost.")
                 }
+                .alert(
+                    "No Legal Play",
+                    isPresented: $isShowingForcedPickupAlert
+                ) {
+                    Button("Pick Up") {
+                        confirmForcedPickup()
+                    }
+                } message: {
+                    Text("You must pick up the Play Pile.")
+                }
                 .onAppear {
+                    presentForcedPickupAlertIfNeeded()
                     scheduleComputerTurnIfNeeded()
                 }
                 .onChange(of: game.currentPlayerIndex) {
+                    presentForcedPickupAlertIfNeeded()
                     scheduleComputerTurnIfNeeded()
                 }
             } else {
@@ -92,6 +105,7 @@ struct ContentView: View {
         isAutoPlayingComputerTurn = false
         cardPlayAnimation = nil
         isShowingNewGameConfirmation = false
+        isShowingForcedPickupAlert = false
         game = nil
     }
 
@@ -106,6 +120,7 @@ struct ContentView: View {
     private func finishSetup() {
         game?.chooseLocalFaceUpCards(cardIDs: Array(selectedSetupCardIDs))
         selectedSetupCardIDs.removeAll()
+        presentForcedPickupAlertIfNeeded()
         scheduleComputerTurnIfNeeded()
     }
 
@@ -134,6 +149,7 @@ struct ContentView: View {
                 }
 
                 selectedHandCardIDs.removeAll()
+                presentForcedPickupAlertIfNeeded()
                 scheduleComputerTurnIfNeeded()
             }
         }
@@ -154,6 +170,7 @@ struct ContentView: View {
                 }
 
                 selectedHandCardIDs.removeAll()
+                presentForcedPickupAlertIfNeeded()
                 scheduleComputerTurnIfNeeded()
             }
         }
@@ -174,6 +191,7 @@ struct ContentView: View {
                 }
 
                 selectedHandCardIDs.removeAll()
+                presentForcedPickupAlertIfNeeded()
                 scheduleComputerTurnIfNeeded()
             }
         }
@@ -185,6 +203,30 @@ struct ContentView: View {
         }
 
         selectedHandCardIDs.removeAll()
+        presentForcedPickupAlertIfNeeded()
+        scheduleComputerTurnIfNeeded()
+    }
+
+    private func presentForcedPickupAlertIfNeeded() {
+        guard isShowingForcedPickupAlert == false,
+              isAutoPlayingComputerTurn == false,
+              cardPlayAnimation == nil,
+              game?.localPlayerRequiresForcedPickup == true else {
+            return
+        }
+
+        isShowingForcedPickupAlert = true
+    }
+
+    private func confirmForcedPickup() {
+        guard game?.localPlayerRequiresForcedPickup == true else {
+            isShowingForcedPickupAlert = false
+            return
+        }
+
+        _ = game?.pickUpPlayPileForLocalPlayer()
+        selectedHandCardIDs.removeAll()
+        isShowingForcedPickupAlert = false
         scheduleComputerTurnIfNeeded()
     }
 
@@ -193,6 +235,7 @@ struct ContentView: View {
               let game,
               game.isSetupComplete,
               cardPlayAnimation == nil,
+              isShowingForcedPickupAlert == false,
               game.players[game.currentPlayerIndex].kind == .computer else {
             return
         }
@@ -238,6 +281,7 @@ struct ContentView: View {
                 }
 
                 self.isAutoPlayingComputerTurn = false
+                self.presentForcedPickupAlertIfNeeded()
                 self.scheduleComputerTurnIfNeeded()
             }
         }

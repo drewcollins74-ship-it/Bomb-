@@ -168,6 +168,11 @@ Pickup:
 
 - If a player has no legal hand play, the player picks up the Play Pile.
 - If a player has no legal face-up setup card, the player picks up the Play Pile.
+- When the local human player has no legal hand or face-up setup play, show a mandatory pickup notification.
+- The local human player confirms the forced pickup by tapping Pick Up.
+- After confirmation, the Play Pile is picked up and the turn ends.
+- Computer players perform forced pickup automatically without notification.
+- The forced-pickup notification does not apply to illegal face-down reveals.
 - An illegal face-down reveal follows the special forced-pickup sequence in Section 17.
 
 ## 11. Turn Order and Direction

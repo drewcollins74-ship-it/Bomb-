@@ -40,6 +40,30 @@ struct Game {
         activeSource(forPlayerAt: localPlayerIndex)
     }
 
+    var localPlayerRequiresForcedPickup: Bool {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              currentPlayerIndex == localPlayerIndex,
+              playPile.isEmpty == false else {
+            return false
+        }
+
+        switch activeSource(forPlayerAt: localPlayerIndex) {
+        case .hand:
+            return players[localPlayerIndex].hand.contains { card in
+                isLegalPlay(cards: [card])
+            } == false
+
+        case .faceUpSetup:
+            return players[localPlayerIndex].faceUpCards.contains { card in
+                isLegalPlay(cards: [card])
+            } == false
+
+        case .waitingForDrawPileToEmpty, .faceDown, .won:
+            return false
+        }
+    }
+
     init(
         localPlayerName: String,
         computerPlayerNames: [String]
