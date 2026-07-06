@@ -19,10 +19,8 @@ struct ContentView: View {
     @State private var playPilePickupAnimation: PlayPilePickupAnimation?
     @State private var playPileExplosion: PlayPileExplosion?
     @State private var isShowingNewGameConfirmation = false
-    @State private var isShowingForcedPickupAlert = false
-    @State private var isShowingWinNotification = false
+    @State private var activeGameAlert: ActiveGameAlert?
     @State private var pendingWinnerIndex: Int?
-    @State private var presentedWinnerIndex: Int?
     @State private var isSchedulingWinNotification = false
     @State private var isResolvingPostPlayPresentation = false
 
@@ -35,7 +33,7 @@ struct ContentView: View {
                     cardPlayAnimation: cardPlayAnimation,
                     playPilePickupAnimation: playPilePickupAnimation,
                     playPileExplosion: playPileExplosion,
-                    isGameFrozen: game.winnerIndex != nil || isShowingWinNotification,
+                    isGameFrozen: game.winnerIndex != nil || activeGameAlert?.isWinNotification == true,
                     toggleHandCardSelection: toggleHandCardSelection,
                     playSelectedHandCards: playSelectedHandCards,
                     playFaceUpCard: playFaceUpCard,
@@ -57,24 +55,25 @@ struct ContentView: View {
                     Text("Your current game progress will be lost.")
                 }
                 .alert(
-                    "No Legal Play",
-                    isPresented: $isShowingForcedPickupAlert
+                    activeGameAlertTitle,
+                    isPresented: activeGameAlertIsPresented
                 ) {
-                    Button("Pick Up") {
-                        confirmForcedPickup()
+                    switch activeGameAlert {
+                    case .forcedPickup:
+                        Button("Pick Up") {
+                            confirmForcedPickup()
+                        }
+
+                    case .win:
+                        Button("New Game") {
+                            resetToNewGameSetup()
+                        }
+
+                    case nil:
+                        EmptyView()
                     }
                 } message: {
-                    Text("You must pick up the Play Pile.")
-                }
-                .alert(
-                    winNotificationTitle,
-                    isPresented: $isShowingWinNotification
-                ) {
-                    Button("New Game") {
-                        resetToNewGameSetup()
-                    }
-                } message: {
-                    Text(winNotificationMessage)
+                    Text(activeGameAlertMessage)
                 }
                 .onAppear {
                     presentWinNotificationIfNeeded()
@@ -133,10 +132,8 @@ struct ContentView: View {
         playPilePickupAnimation = nil
         playPileExplosion = nil
         isShowingNewGameConfirmation = false
-        isShowingForcedPickupAlert = false
-        isShowingWinNotification = false
+        activeGameAlert = nil
         pendingWinnerIndex = nil
-        presentedWinnerIndex = nil
         isSchedulingWinNotification = false
         isResolvingPostPlayPresentation = false
         game = nil
@@ -169,7 +166,7 @@ struct ContentView: View {
         guard cardPlayAnimation == nil,
               playPilePickupAnimation == nil,
               playPileExplosion == nil,
-              isShowingWinNotification == false,
+              activeGameAlert?.isWinNotification != true,
               game?.winnerIndex == nil,
               let cards = game?.legalLocalHandCards(cardIDs: selectedHandCardIDs) else {
             return
@@ -210,7 +207,7 @@ struct ContentView: View {
         guard cardPlayAnimation == nil,
               playPilePickupAnimation == nil,
               playPileExplosion == nil,
-              isShowingWinNotification == false,
+              activeGameAlert?.isWinNotification != true,
               game?.winnerIndex == nil,
               let playedCard = game?.legalLocalFaceUpCard(cardID: card.id) else {
             return
@@ -250,7 +247,7 @@ struct ContentView: View {
         guard cardPlayAnimation == nil,
               playPilePickupAnimation == nil,
               playPileExplosion == nil,
-              isShowingWinNotification == false,
+              activeGameAlert?.isWinNotification != true,
               game?.winnerIndex == nil,
               let playedCard = game?.localFaceDownCard(at: index) else {
             return
@@ -297,7 +294,7 @@ struct ContentView: View {
         guard cardPlayAnimation == nil,
               playPilePickupAnimation == nil,
               playPileExplosion == nil,
-              isShowingWinNotification == false,
+              activeGameAlert?.isWinNotification != true,
               game?.winnerIndex == nil,
               let pickupPreview = game?.playPilePickupPreviewForLocalPlayer() else {
             return
@@ -321,8 +318,7 @@ struct ContentView: View {
     }
 
     private func presentForcedPickupAlertIfNeeded() {
-        guard isShowingForcedPickupAlert == false,
-              isShowingWinNotification == false,
+        guard activeGameAlert == nil,
               isAutoPlayingComputerTurn == false,
               cardPlayAnimation == nil,
               playPilePickupAnimation == nil,
@@ -332,22 +328,22 @@ struct ContentView: View {
             return
         }
 
-        isShowingForcedPickupAlert = true
+        activeGameAlert = .forcedPickup
     }
 
     private func confirmForcedPickup() {
-        guard isShowingWinNotification == false,
+        guard activeGameAlert == .forcedPickup,
               cardPlayAnimation == nil,
               playPilePickupAnimation == nil,
               playPileExplosion == nil,
               game?.winnerIndex == nil,
               game?.localPlayerRequiresForcedPickup == true,
               let pickupPreview = game?.playPilePickupPreviewForLocalPlayer() else {
-            isShowingForcedPickupAlert = false
+            activeGameAlert = nil
             return
         }
 
-        isShowingForcedPickupAlert = false
+        activeGameAlert = nil
 
         Task {
             await animatePlayPilePickupIfNeeded(pickupPreview)
@@ -374,8 +370,7 @@ struct ContentView: View {
               cardPlayAnimation == nil,
               playPilePickupAnimation == nil,
               playPileExplosion == nil,
-              isShowingWinNotification == false,
-              isShowingForcedPickupAlert == false,
+              activeGameAlert == nil,
               game.players[game.currentPlayerIndex].kind == .computer else {
             return
         }
@@ -480,21 +475,22 @@ struct ContentView: View {
     private func presentWinNotificationIfNeeded() {
         guard let game,
               let winnerIndex = game.winnerIndex,
-              presentedWinnerIndex != winnerIndex else {
+              activeGameAlert != .win(winnerIndex) else {
             return
         }
 
         isAutoPlayingComputerTurn = false
-        isShowingForcedPickupAlert = false
+        if activeGameAlert == .forcedPickup {
+            activeGameAlert = nil
+        }
         pendingWinnerIndex = winnerIndex
         schedulePendingWinNotificationPresentation()
     }
 
     private func schedulePendingWinNotificationPresentation() {
         guard isSchedulingWinNotification == false,
-              isShowingWinNotification == false,
               let pendingWinnerIndex,
-              presentedWinnerIndex != pendingWinnerIndex else {
+              activeGameAlert != .win(pendingWinnerIndex) else {
             return
         }
 
@@ -504,8 +500,7 @@ struct ContentView: View {
             while true {
                 guard let game = self.game,
                       let winnerIndex = game.winnerIndex,
-                      self.pendingWinnerIndex == winnerIndex,
-                      self.presentedWinnerIndex != winnerIndex else {
+                      self.pendingWinnerIndex == winnerIndex else {
                     self.isSchedulingWinNotification = false
                     return
                 }
@@ -514,11 +509,10 @@ struct ContentView: View {
                    self.playPilePickupAnimation == nil,
                    self.playPileExplosion == nil,
                    self.isResolvingPostPlayPresentation == false,
-                   self.isShowingForcedPickupAlert == false,
+                   self.activeGameAlert == nil,
                    self.isShowingNewGameConfirmation == false {
                     self.isAutoPlayingComputerTurn = false
-                    self.isShowingWinNotification = true
-                    self.presentedWinnerIndex = winnerIndex
+                    self.activeGameAlert = .win(winnerIndex)
                     self.pendingWinnerIndex = nil
                     self.isSchedulingWinNotification = false
                     return
@@ -529,9 +523,55 @@ struct ContentView: View {
         }
     }
 
-    private var winNotificationTitle: String {
+    private var activeGameAlertIsPresented: Binding<Bool> {
+        Binding(
+            get: {
+                activeGameAlert != nil
+            },
+            set: { isPresented in
+                if isPresented == false {
+                    handleActiveGameAlertDismissed()
+                }
+            }
+        )
+    }
+
+    private var activeGameAlertTitle: String {
+        switch activeGameAlert {
+        case .forcedPickup:
+            return "No Legal Play"
+        case .win(let winnerIndex):
+            return winNotificationTitle(for: winnerIndex)
+        case nil:
+            return ""
+        }
+    }
+
+    private var activeGameAlertMessage: String {
+        switch activeGameAlert {
+        case .forcedPickup:
+            return "You must pick up the Play Pile."
+        case .win(let winnerIndex):
+            return winNotificationMessage(for: winnerIndex)
+        case nil:
+            return ""
+        }
+    }
+
+    private func handleActiveGameAlertDismissed() {
+        guard case .win(let winnerIndex) = activeGameAlert,
+              game?.winnerIndex == winnerIndex else {
+            activeGameAlert = nil
+            return
+        }
+
+        activeGameAlert = nil
+        pendingWinnerIndex = winnerIndex
+        schedulePendingWinNotificationPresentation()
+    }
+
+    private func winNotificationTitle(for winnerIndex: Int) -> String {
         guard let game,
-              let winnerIndex = game.winnerIndex,
               game.players.indices.contains(winnerIndex) else {
             return "Game Over"
         }
@@ -543,9 +583,8 @@ struct ContentView: View {
         return "\(game.players[winnerIndex].name) Wins!"
     }
 
-    private var winNotificationMessage: String {
-        guard let game,
-              let winnerIndex = game.winnerIndex else {
+    private func winNotificationMessage(for winnerIndex: Int) -> String {
+        guard let game else {
             return "Game over."
         }
 
@@ -624,6 +663,19 @@ struct ContentView: View {
 
         try? await Task.sleep(nanoseconds: 700_000_000)
         playPileExplosion = nil
+    }
+}
+
+enum ActiveGameAlert: Equatable {
+    case forcedPickup
+    case win(Int)
+
+    var isWinNotification: Bool {
+        if case .win = self {
+            return true
+        }
+
+        return false
     }
 }
 
