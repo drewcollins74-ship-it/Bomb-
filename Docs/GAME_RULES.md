@@ -24,6 +24,28 @@ Card collections:
 - Play Pile: active cards currently in play.
 - Discard Pile: cards permanently cleared from active play by a 10 or Bomb.
 
+### Starting the Game
+
+- At the start of each game, choose one dealer randomly.
+- After the normal deal and face-up setup selection are complete, reveal one card from the Draw Pile and place it face-up as the first card of the active Play Pile.
+- The revealed opening card is a seed card used to initialize the Play Pile. It is not treated as a card played by a player.
+- The player immediately to the left of the dealer takes the first turn.
+- Play begins in the normal starting direction.
+
+Opening seed-card behavior:
+
+- Normal rank: establishes the initial playable-rank restriction. The first player must play an equal-or-higher normal rank or an always-playable special card.
+- 2: does not trigger a player action, but the opening restriction is reset. The first player may play any rank.
+- 10: does not clear the Play Pile and does not grant an extra turn because no player played it. The first player may play any rank.
+- Joker: does not reverse direction because no player played it. With no prior playable-rank restriction to preserve, the first player may play any rank.
+
+Once the first player makes an actual play, all normal special-card rules apply immediately. For example:
+
+- Playing a 2 resets the playable-rank restriction.
+- Playing a 10 clears the Play Pile and gives that player another turn.
+- Playing a Joker reverses direction only.
+- Completing four consecutive cards of the same rank creates a Bomb.
+
 ## 2. Rank Order
 
 Normal rank order:
@@ -298,3 +320,4 @@ The rules above are authoritative. The current implementation should be checked 
 ## 23. Rule Change Log
 
 - 2026-07-06: Initial authoritative gameplay specification created.
+- 2026-07-06: Added random dealer selection, left-of-dealer first turn, opening Play Pile seed card, and explicit special opening seed-card behavior.
