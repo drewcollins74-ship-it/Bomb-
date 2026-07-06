@@ -21,7 +21,10 @@ struct ContentView: View {
     @State private var isShowingNewGameConfirmation = false
     @State private var isShowingForcedPickupAlert = false
     @State private var isShowingWinNotification = false
+    @State private var pendingWinnerIndex: Int?
     @State private var presentedWinnerIndex: Int?
+    @State private var isSchedulingWinNotification = false
+    @State private var isResolvingPostPlayPresentation = false
 
     var body: some View {
         if let game {
@@ -132,7 +135,10 @@ struct ContentView: View {
         isShowingNewGameConfirmation = false
         isShowingForcedPickupAlert = false
         isShowingWinNotification = false
+        pendingWinnerIndex = nil
         presentedWinnerIndex = nil
+        isSchedulingWinNotification = false
+        isResolvingPostPlayPresentation = false
         game = nil
     }
 
@@ -176,10 +182,14 @@ struct ContentView: View {
             await animatePlayedCards(cards, from: .localHand)
 
             let didPlay = await MainActor.run {
-                game?.playLocalCards(cardIDs: cardIDs) == true
+                isResolvingPostPlayPresentation = true
+                return game?.playLocalCards(cardIDs: cardIDs) == true
             }
 
             guard didPlay else {
+                await MainActor.run {
+                    isResolvingPostPlayPresentation = false
+                }
                 return
             }
 
@@ -190,6 +200,7 @@ struct ContentView: View {
             await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
+                isResolvingPostPlayPresentation = false
                 finishPostPlayPresentation()
             }
         }
@@ -211,10 +222,14 @@ struct ContentView: View {
             await animatePlayedCards([playedCard], from: .localSetup)
 
             let didPlay = await MainActor.run {
-                game?.playLocalFaceUpCard(cardID: card.id) == true
+                isResolvingPostPlayPresentation = true
+                return game?.playLocalFaceUpCard(cardID: card.id) == true
             }
 
             guard didPlay else {
+                await MainActor.run {
+                    isResolvingPostPlayPresentation = false
+                }
                 return
             }
 
@@ -225,6 +240,7 @@ struct ContentView: View {
             await animatePlayPileExplosionIfNeeded(clearPreview)
 
             await MainActor.run {
+                isResolvingPostPlayPresentation = false
                 finishPostPlayPresentation()
             }
         }
@@ -251,10 +267,14 @@ struct ContentView: View {
             }
 
             let didPlay = await MainActor.run {
-                game?.playLocalFaceDownCard(at: index) == true
+                isResolvingPostPlayPresentation = true
+                return game?.playLocalFaceDownCard(at: index) == true
             }
 
             guard didPlay else {
+                await MainActor.run {
+                    isResolvingPostPlayPresentation = false
+                }
                 return
             }
 
@@ -267,6 +287,7 @@ struct ContentView: View {
             }
 
             await MainActor.run {
+                isResolvingPostPlayPresentation = false
                 finishPostPlayPresentation()
             }
         }
@@ -286,11 +307,14 @@ struct ContentView: View {
             await animatePlayPilePickupIfNeeded(pickupPreview)
 
             await MainActor.run {
+                isResolvingPostPlayPresentation = true
                 guard game?.pickUpPlayPileForLocalPlayer() == true else {
+                    isResolvingPostPlayPresentation = false
                     return
                 }
 
                 selectedHandCardIDs.removeAll()
+                isResolvingPostPlayPresentation = false
                 finishPostPlayPresentation()
             }
         }
@@ -329,11 +353,14 @@ struct ContentView: View {
             await animatePlayPilePickupIfNeeded(pickupPreview)
 
             await MainActor.run {
+                isResolvingPostPlayPresentation = true
                 guard game?.pickUpPlayPileForLocalPlayer() == true else {
+                    isResolvingPostPlayPresentation = false
                     return
                 }
 
                 selectedHandCardIDs.removeAll()
+                isResolvingPostPlayPresentation = false
                 finishPostPlayPresentation()
             }
         }
@@ -416,6 +443,8 @@ struct ContentView: View {
                     return false
                 }
 
+                self.isResolvingPostPlayPresentation = true
+
                 if let plannedPlay {
                     return self.game?.playCurrentComputerTurn(faceDownIndex: plannedPlay.faceDownIndex) == true
                 } else {
@@ -431,6 +460,7 @@ struct ContentView: View {
 
             await MainActor.run {
                 self.isAutoPlayingComputerTurn = false
+                self.isResolvingPostPlayPresentation = false
                 self.finishPostPlayPresentation()
             }
         }
@@ -448,20 +478,55 @@ struct ContentView: View {
     }
 
     private func presentWinNotificationIfNeeded() {
-        guard isShowingWinNotification == false,
-              cardPlayAnimation == nil,
-              playPilePickupAnimation == nil,
-              playPileExplosion == nil,
-              let game,
+        guard let game,
               let winnerIndex = game.winnerIndex,
               presentedWinnerIndex != winnerIndex else {
             return
         }
 
-        presentedWinnerIndex = winnerIndex
         isAutoPlayingComputerTurn = false
         isShowingForcedPickupAlert = false
-        isShowingWinNotification = true
+        pendingWinnerIndex = winnerIndex
+        schedulePendingWinNotificationPresentation()
+    }
+
+    private func schedulePendingWinNotificationPresentation() {
+        guard isSchedulingWinNotification == false,
+              isShowingWinNotification == false,
+              let pendingWinnerIndex,
+              presentedWinnerIndex != pendingWinnerIndex else {
+            return
+        }
+
+        isSchedulingWinNotification = true
+
+        Task { @MainActor in
+            while true {
+                guard let game = self.game,
+                      let winnerIndex = game.winnerIndex,
+                      self.pendingWinnerIndex == winnerIndex,
+                      self.presentedWinnerIndex != winnerIndex else {
+                    self.isSchedulingWinNotification = false
+                    return
+                }
+
+                if self.cardPlayAnimation == nil,
+                   self.playPilePickupAnimation == nil,
+                   self.playPileExplosion == nil,
+                   self.isResolvingPostPlayPresentation == false,
+                   self.isShowingForcedPickupAlert == false,
+                   self.isShowingNewGameConfirmation == false {
+                    self.isAutoPlayingComputerTurn = false
+                    self.isShowingWinNotification = true
+                    self.presentedWinnerIndex = winnerIndex
+                    self.pendingWinnerIndex = nil
+                    self.isSchedulingWinNotification = false
+                    return
+                }
+
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
     }
 
     private var winNotificationTitle: String {
