@@ -16,6 +16,7 @@ struct Game {
     var currentPlayerIndex: Int
     var direction: PlayDirection
     var localPlayerIndex: Int
+    var dealerIndex: Int
     var isSetupComplete: Bool
     var lastActionMessage: String?
     var currentRankRestriction: Rank?
@@ -69,6 +70,7 @@ struct Game {
         self.currentPlayerIndex = 0
         self.direction = .clockwise
         self.localPlayerIndex = 0
+        self.dealerIndex = Int.random(in: 0..<playerCount)
         self.isSetupComplete = false
         self.lastActionMessage = nil
         self.currentRankRestriction = nil
@@ -113,6 +115,7 @@ struct Game {
 
         if didChooseCards {
             isSetupComplete = true
+            startGameplayAfterSetup()
         }
     }
 
@@ -152,6 +155,42 @@ struct Game {
             return 15
         case .standard(_, let rank):
             return rank.rawValue
+        }
+    }
+
+    private mutating func startGameplayAfterSetup() {
+        direction = .clockwise
+        currentPlayerIndex = playerIndexToLeftOfDealer()
+        revealOpeningSeedCard()
+        refillCurrentPlayerIfWaitingForDrawPile()
+    }
+
+    private func playerIndexToLeftOfDealer() -> Int {
+        (dealerIndex + 1) % players.count
+    }
+
+    private mutating func revealOpeningSeedCard() {
+        guard playPile.isEmpty,
+              let openingCard = drawPile.popLast() else {
+            return
+        }
+
+        playPile.append(openingCard)
+        currentRankRestriction = openingRankRestriction(for: openingCard)
+        lastActionMessage = "Opening card: \(rankDescription(for: openingCard))"
+    }
+
+    private func openingRankRestriction(for card: PlayingCard) -> Rank? {
+        switch card.kind {
+        case .joker:
+            return nil
+        case .standard(_, let rank):
+            switch rank {
+            case .two, .ten:
+                return nil
+            default:
+                return rank
+            }
         }
     }
 
