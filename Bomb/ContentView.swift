@@ -869,7 +869,7 @@ struct GameScreenMetrics {
     }
 
     var playPileCardWidth: CGFloat {
-        pileCardWidth * 0.88
+        pileCardWidth * 0.78
     }
 
     private func clamp(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
@@ -1154,9 +1154,15 @@ struct PlayPileStackView: View {
                     let stackIndex = CGFloat(index - visibleCards.count + 1)
 
                     CardView(card: card, width: cardWidth)
+                        .overlay(alignment: .topLeading) {
+                            PlayPileCornerLabel(
+                                card: card,
+                                width: cardWidth
+                            )
+                        }
                         .offset(
-                            x: stackIndex * cardWidth * 0.32,
-                            y: stackIndex * cardWidth * 0.20
+                            x: stackIndex * cardWidth * 0.46,
+                            y: stackIndex * cardWidth * 0.32
                         )
                         .zIndex(Double(index))
                 }
@@ -1171,9 +1177,77 @@ struct PlayPileStackView: View {
                 .offset(x: 10, y: -10)
         }
         .frame(
-            width: cardWidth + cardWidth * 0.64,
-            height: PlayingCardLayout.height(forWidth: cardWidth) + cardWidth * 0.40
+            width: cardWidth + cardWidth * 0.92,
+            height: PlayingCardLayout.height(forWidth: cardWidth) + cardWidth * 0.64
         )
+    }
+}
+
+struct PlayPileCornerLabel: View {
+    let card: PlayingCard
+    let width: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(rankText)
+                .font(.system(size: width * 0.24, weight: .bold))
+
+            Text(suitText)
+                .font(.system(size: width * 0.22, weight: .bold))
+        }
+        .foregroundStyle(cardColor)
+        .padding(width * 0.08)
+    }
+
+    private var rankText: String {
+        switch card.kind {
+        case .joker:
+            return "J"
+        case .standard(_, let rank):
+            switch rank {
+            case .two: return "2"
+            case .three: return "3"
+            case .four: return "4"
+            case .five: return "5"
+            case .six: return "6"
+            case .seven: return "7"
+            case .eight: return "8"
+            case .nine: return "9"
+            case .ten: return "10"
+            case .jack: return "J"
+            case .queen: return "Q"
+            case .king: return "K"
+            case .ace: return "A"
+            }
+        }
+    }
+
+    private var suitText: String {
+        switch card.kind {
+        case .joker:
+            return "🃏"
+        case .standard(let suit, _):
+            switch suit {
+            case .hearts: return "♥"
+            case .diamonds: return "♦"
+            case .clubs: return "♣"
+            case .spades: return "♠"
+            }
+        }
+    }
+
+    private var cardColor: Color {
+        switch card.kind {
+        case .joker:
+            return .purple
+        case .standard(let suit, _):
+            switch suit {
+            case .hearts, .diamonds:
+                return .red
+            case .clubs, .spades:
+                return .black
+            }
+        }
     }
 }
 
