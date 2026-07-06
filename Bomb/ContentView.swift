@@ -13,11 +13,25 @@ struct ContentView: View {
     @State private var totalPlayers = 3
     @State private var game: Game?
     @State private var selectedSetupCardIDs: Set<PlayingCard.ID> = []
+    @State private var selectedHandCardIDs: Set<PlayingCard.ID> = []
+    @State private var isAutoPlayingComputerTurn = false
 
     var body: some View {
         if let game {
             if game.isSetupComplete {
-                GameScreen(game: game)
+                GameScreen(
+                    game: game,
+                    selectedHandCardIDs: selectedHandCardIDs,
+                    toggleHandCardSelection: toggleHandCardSelection,
+                    playSelectedHandCards: playSelectedHandCards,
+                    pickUpPlayPile: pickUpPlayPile
+                )
+                .onAppear {
+                    scheduleComputerTurnIfNeeded()
+                }
+                .onChange(of: game.currentPlayerIndex) {
+                    scheduleComputerTurnIfNeeded()
+                }
             } else {
                 FaceUpSetupView(
                     game: game,
@@ -40,6 +54,8 @@ struct ContentView: View {
         let localPlayerName = trimmedName.isEmpty ? "Player" : trimmedName
         let computerPlayerNames = (1..<totalPlayers).map { "Computer \($0)" }
         selectedSetupCardIDs.removeAll()
+        selectedHandCardIDs.removeAll()
+        isAutoPlayingComputerTurn = false
 
         game = Game(
             localPlayerName: localPlayerName,
@@ -58,6 +74,60 @@ struct ContentView: View {
     private func finishSetup() {
         game?.chooseLocalFaceUpCards(cardIDs: Array(selectedSetupCardIDs))
         selectedSetupCardIDs.removeAll()
+        scheduleComputerTurnIfNeeded()
+    }
+
+    private func toggleHandCardSelection(_ card: PlayingCard) {
+        if selectedHandCardIDs.contains(card.id) {
+            selectedHandCardIDs.remove(card.id)
+        } else {
+            selectedHandCardIDs.insert(card.id)
+        }
+    }
+
+    private func playSelectedHandCards() {
+        guard game?.playLocalCards(cardIDs: selectedHandCardIDs) == true else {
+            return
+        }
+
+        selectedHandCardIDs.removeAll()
+        scheduleComputerTurnIfNeeded()
+    }
+
+    private func pickUpPlayPile() {
+        guard game?.pickUpPlayPileForLocalPlayer() == true else {
+            return
+        }
+
+        selectedHandCardIDs.removeAll()
+        scheduleComputerTurnIfNeeded()
+    }
+
+    private func scheduleComputerTurnIfNeeded() {
+        guard isAutoPlayingComputerTurn == false,
+              let game,
+              game.isSetupComplete,
+              game.players[game.currentPlayerIndex].kind == .computer else {
+            return
+        }
+
+        isAutoPlayingComputerTurn = true
+
+        Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+            await MainActor.run {
+                guard let game = self.game,
+                      game.players[game.currentPlayerIndex].kind == .computer else {
+                    self.isAutoPlayingComputerTurn = false
+                    return
+                }
+
+                _ = self.game?.playCurrentComputerTurn()
+                self.isAutoPlayingComputerTurn = false
+                self.scheduleComputerTurnIfNeeded()
+            }
+        }
     }
 }
 
@@ -301,13 +371,18 @@ struct FaceUpSetupMetrics {
 
 struct GameScreen: View {
     let game: Game
+    let selectedHandCardIDs: Set<PlayingCard.ID>
+    let toggleHandCardSelection: (PlayingCard) -> Void
+    let playSelectedHandCards: () -> Void
+    let pickUpPlayPile: () -> Void
 
     var body: some View {
         GeometryReader { geometry in
             let metrics = GameScreenMetrics(
                 size: geometry.size,
                 safeAreaInsets: geometry.safeAreaInsets,
-                opponentCount: game.opponents.count
+                opponentCount: game.opponents.count,
+                localHandCount: game.localPlayer.hand.count
             )
 
             ZStack {
@@ -388,15 +463,45 @@ struct GameScreen: View {
                 spacing: metrics.playerSetupSpacing
             )
 
-            Text("Your remaining hand (\(localPlayer.hand.count) cards)")
-                .font(.system(size: metrics.labelFontSize, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
+            HStack {
+                Text("Your remaining hand (\(localPlayer.hand.count) cards)")
+                    .font(.system(size: metrics.labelFontSize, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
 
-            HStack(spacing: metrics.handCardSpacing) {
-                ForEach(localPlayer.hand) { card in
-                    CardView(card: card, width: metrics.handCardWidth)
+                Spacer()
+
+                Button("Play") {
+                    playSelectedHandCards()
                 }
+                .font(.system(size: metrics.labelFontSize, weight: .semibold))
+                .disabled(
+                    game.currentPlayerIndex != game.localPlayerIndex ||
+                    selectedHandCardIDs.isEmpty
+                )
             }
+
+            ScrollView(.horizontal) {
+                HStack(spacing: metrics.handCardSpacing) {
+                    ForEach(localPlayer.hand) { card in
+                        Button {
+                            toggleHandCardSelection(card)
+                        } label: {
+                            CardView(card: card, width: metrics.handCardWidth)
+                                .overlay {
+                                    if selectedHandCardIDs.contains(card.id) {
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(.blue, lineWidth: 3)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(game.currentPlayerIndex != game.localPlayerIndex)
+                    }
+                }
+                .padding(.horizontal, metrics.handScrollHorizontalPadding)
+            }
+            .frame(height: PlayingCardLayout.height(forWidth: metrics.handCardWidth))
+            .scrollIndicators(.hidden)
         }
         .padding(.vertical, metrics.panelPadding)
         .frame(maxWidth: .infinity)
@@ -432,7 +537,7 @@ struct GameScreen: View {
 
     private func tableCenter(metrics: GameScreenMetrics) -> some View {
         VStack(spacing: metrics.centerInnerSpacing) {
-            Text(game.currentPlayerIndex == game.localPlayerIndex ? "Your Turn" : "\(game.players[game.currentPlayerIndex].name)'s Turn")
+            Text(game.lastActionMessage ?? (game.currentPlayerIndex == game.localPlayerIndex ? "Your Turn" : "\(game.players[game.currentPlayerIndex].name)'s Turn"))
                 .font(.system(size: metrics.turnFontSize, weight: .semibold))
                 .foregroundStyle(.green)
                 .padding(.horizontal, metrics.titleHorizontalPadding)
@@ -454,18 +559,20 @@ struct GameScreen: View {
 
                 VStack(spacing: metrics.pileInnerSpacing) {
                     PileLabel(text: "Play Pile")
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(.white.opacity(0.65), style: StrokeStyle(lineWidth: 2, dash: [7]))
-                        .frame(
-                            width: metrics.pileCardWidth,
-                            height: PlayingCardLayout.height(forWidth: metrics.pileCardWidth)
-                        )
-                        .overlay {
-                            Text("Play\nPile")
-                                .font(.system(size: metrics.playPileFontSize))
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(.white.opacity(0.75))
-                        }
+                    PlayPileStackView(
+                        cards: game.playPile,
+                        cardWidth: metrics.pileCardWidth,
+                        placeholderFontSize: metrics.playPileFontSize
+                    )
+
+                    Button("Pick Up") {
+                        pickUpPlayPile()
+                    }
+                    .font(.system(size: metrics.playPileFontSize, weight: .semibold))
+                    .disabled(
+                        game.currentPlayerIndex != game.localPlayerIndex ||
+                        game.playPile.isEmpty
+                    )
                 }
                 .frame(maxWidth: .infinity)
 
@@ -532,6 +639,7 @@ struct GameScreenMetrics {
     let size: CGSize
     let safeAreaInsets: EdgeInsets
     let opponentCount: Int
+    let localHandCount: Int
 
     private var safeHeight: CGFloat {
         size.height - safeAreaInsets.top - safeAreaInsets.bottom
@@ -645,7 +753,15 @@ struct GameScreenMetrics {
     }
 
     var handCardSpacing: CGFloat {
-        clamp(contentWidth * 0.055, min: 14, max: 24)
+        if localHandCount > 6 {
+            return clamp(contentWidth * 0.025, min: 8, max: 12)
+        }
+
+        return clamp(contentWidth * 0.055, min: 14, max: 24)
+    }
+
+    var handScrollHorizontalPadding: CGFloat {
+        clamp(contentWidth * 0.01, min: 4, max: 8)
     }
 
     var playerSetupCardWidth: CGFloat {
@@ -659,7 +775,20 @@ struct GameScreenMetrics {
 
     var handCardWidth: CGFloat {
         let widthBased = (contentWidth - handCardSpacing * 2) / 3
-        return clamp(min(widthBased, playerSetupCardWidth), min: 38, max: 62)
+        let countBasedScale: CGFloat
+
+        switch localHandCount {
+        case 0...3:
+            countBasedScale = 1
+        case 4...6:
+            countBasedScale = 0.92
+        case 7...10:
+            countBasedScale = 0.82
+        default:
+            countBasedScale = 0.72
+        }
+
+        return clamp(min(widthBased, playerSetupCardWidth) * countBasedScale, min: 34, max: 62)
     }
 
     var opponentsInnerSpacing: CGFloat {
@@ -988,6 +1117,58 @@ struct CardBackStackView: View {
         .frame(
             width: cardWidth,
             height: PlayingCardLayout.height(forWidth: cardWidth) + cardWidth * 0.12
+        )
+    }
+}
+
+struct PlayPileStackView: View {
+    let cards: [PlayingCard]
+    let cardWidth: CGFloat
+    let placeholderFontSize: CGFloat
+
+    private var visibleCards: [PlayingCard] {
+        Array(cards.suffix(3))
+    }
+
+    var body: some View {
+        ZStack {
+            if visibleCards.isEmpty {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(.white.opacity(0.65), style: StrokeStyle(lineWidth: 2, dash: [7]))
+                    .frame(
+                        width: cardWidth,
+                        height: PlayingCardLayout.height(forWidth: cardWidth)
+                    )
+                    .overlay {
+                        Text("Play\nPile")
+                            .font(.system(size: placeholderFontSize))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+            } else {
+                ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
+                    let stackIndex = CGFloat(index - visibleCards.count + 1)
+
+                    CardView(card: card, width: cardWidth)
+                        .offset(
+                            x: stackIndex * cardWidth * 0.16,
+                            y: stackIndex * cardWidth * 0.10
+                        )
+                        .zIndex(Double(index))
+                }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Text("\(cards.count)")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .padding(6)
+                .background(Circle().fill(.black.opacity(0.5)))
+                .offset(x: 10, y: -10)
+        }
+        .frame(
+            width: cardWidth + cardWidth * 0.32,
+            height: PlayingCardLayout.height(forWidth: cardWidth) + cardWidth * 0.20
         )
     }
 }
