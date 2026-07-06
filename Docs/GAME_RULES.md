@@ -294,7 +294,11 @@ Exact sequence:
 
 - Computer players use the same legality engine as the human player.
 - Computer players follow the same phase rules as the human player.
-- In hand phase, computer players use the existing simple deterministic play strategy.
+- In hand phase, computer players use the existing simple deterministic strategy to choose which legal rank to play.
+- After a computer chooses a rank in hand phase, it plays all cards of that rank from its hand together as one play.
+- The grouped computer play must obey the same multi-card legality rules as a human play: all cards in the group share the same rank and the chosen rank is legal.
+- A grouped computer play may complete a Bomb and must resolve through the normal Bomb logic.
+- The all-matching-cards rule applies only to hand phase. In face-up setup phase, the current rule remains one face-up setup card per play.
 - In face-up setup phase, computer players use the existing simple deterministic play strategy among legal face-up setup cards.
 - In face-down phase, computer players choose randomly without inspecting hidden values.
 - Do not invent undocumented computer strategy.
@@ -317,7 +321,12 @@ The rules above are authoritative. The current implementation should be checked 
   - Relevant file: `Bomb/Game.swift`
   - Mismatch: forced pickup currently depends on `pickUpPlayPileForCurrentPlayer()`, which refuses empty Play Piles. The rules also state a player cannot pick up an empty Play Pile, so the empty-pile/no-legal-play edge case needs explicit handling if it can occur.
 
+- Rule: In hand phase, after a computer chooses a legal rank, it plays all cards of that rank together as one play.
+  - Relevant file: `Bomb/Game.swift`
+  - Mismatch: current computer planning and execution select a single `lowestLegalCard(in:)`, so computer players currently play only one card even when they hold additional cards of the same chosen rank.
+
 ## 23. Rule Change Log
 
 - 2026-07-06: Initial authoritative gameplay specification created.
 - 2026-07-06: Added random dealer selection, left-of-dealer first turn, opening Play Pile seed card, and explicit special opening seed-card behavior.
+- 2026-07-06: Added required computer hand behavior to play all cards of the chosen rank together as one play.
