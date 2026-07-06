@@ -84,6 +84,66 @@ struct Game {
         return nil
     }
 
+    func playPilePickupPreviewForLocalPlayer() -> PlayPilePickupPreview? {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              currentPlayerIndex == localPlayerIndex,
+              activeSource(forPlayerAt: localPlayerIndex).allowsVoluntaryPickup else {
+            return nil
+        }
+
+        return playPilePickupPreviewForCurrentPlayer()
+    }
+
+    func playPilePickupPreviewForCurrentComputerTurn() -> PlayPilePickupPreview? {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              players[currentPlayerIndex].kind == .computer else {
+            return nil
+        }
+
+        let playerIndex = currentPlayerIndex
+
+        switch activeSource(forPlayerAt: playerIndex) {
+        case .hand:
+            guard bestComputerHandPlay(in: players[playerIndex].hand) == nil else {
+                return nil
+            }
+
+            return playPilePickupPreviewForCurrentPlayer()
+
+        case .faceUpSetup:
+            guard lowestLegalCard(in: players[playerIndex].faceUpCards) == nil else {
+                return nil
+            }
+
+            return playPilePickupPreviewForCurrentPlayer()
+
+        case .waitingForDrawPileToEmpty, .faceDown, .won:
+            return nil
+        }
+    }
+
+    func playPilePickupPreviewAfterCurrentFaceDownReveal(at index: Int) -> PlayPilePickupPreview? {
+        guard isSetupComplete,
+              winnerIndex == nil,
+              activeSource(forPlayerAt: currentPlayerIndex) == .faceDown,
+              players[currentPlayerIndex].faceDownCards.indices.contains(index) else {
+            return nil
+        }
+
+        let revealedCard = players[currentPlayerIndex].faceDownCards[index]
+
+        guard isLegalPlay(cards: [revealedCard]) == false else {
+            return nil
+        }
+
+        return PlayPilePickupPreview(
+            cards: playPile + [revealedCard],
+            receivingPlayerIndex: currentPlayerIndex
+        )
+    }
+
     init(
         localPlayerName: String,
         computerPlayerNames: [String]
@@ -477,6 +537,17 @@ struct Game {
         advanceTurn()
         refillCurrentPlayerIfWaitingForDrawPile()
         return true
+    }
+
+    private func playPilePickupPreviewForCurrentPlayer() -> PlayPilePickupPreview? {
+        guard playPile.isEmpty == false else {
+            return nil
+        }
+
+        return PlayPilePickupPreview(
+            cards: playPile,
+            receivingPlayerIndex: currentPlayerIndex
+        )
     }
 
     private mutating func applyHandPlay(
@@ -921,4 +992,9 @@ struct PlayPileClearPreview {
 enum PlayPileClearReason {
     case ten
     case bomb
+}
+
+struct PlayPilePickupPreview {
+    let cards: [PlayingCard]
+    let receivingPlayerIndex: Int
 }

@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var selectedHandCardIDs: Set<PlayingCard.ID> = []
     @State private var isAutoPlayingComputerTurn = false
     @State private var cardPlayAnimation: CardPlayAnimation?
+    @State private var playPilePickupAnimation: PlayPilePickupAnimation?
     @State private var playPileExplosion: PlayPileExplosion?
     @State private var isShowingNewGameConfirmation = false
     @State private var isShowingForcedPickupAlert = false
@@ -29,6 +30,7 @@ struct ContentView: View {
                     game: game,
                     selectedHandCardIDs: selectedHandCardIDs,
                     cardPlayAnimation: cardPlayAnimation,
+                    playPilePickupAnimation: playPilePickupAnimation,
                     playPileExplosion: playPileExplosion,
                     isGameFrozen: game.winnerIndex != nil || isShowingWinNotification,
                     toggleHandCardSelection: toggleHandCardSelection,
@@ -108,6 +110,7 @@ struct ContentView: View {
         selectedSetupCardIDs.removeAll()
         selectedHandCardIDs.removeAll()
         isAutoPlayingComputerTurn = false
+        playPilePickupAnimation = nil
 
         game = Game(
             localPlayerName: localPlayerName,
@@ -124,6 +127,7 @@ struct ContentView: View {
         selectedHandCardIDs.removeAll()
         isAutoPlayingComputerTurn = false
         cardPlayAnimation = nil
+        playPilePickupAnimation = nil
         playPileExplosion = nil
         isShowingNewGameConfirmation = false
         isShowingForcedPickupAlert = false
@@ -157,6 +161,7 @@ struct ContentView: View {
 
     private func playSelectedHandCards() {
         guard cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
               playPileExplosion == nil,
               isShowingWinNotification == false,
               game?.winnerIndex == nil,
@@ -192,6 +197,7 @@ struct ContentView: View {
 
     private func playFaceUpCard(_ card: PlayingCard) {
         guard cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
               playPileExplosion == nil,
               isShowingWinNotification == false,
               game?.winnerIndex == nil,
@@ -226,6 +232,7 @@ struct ContentView: View {
 
     private func playFaceDownCard(at index: Int) {
         guard cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
               playPileExplosion == nil,
               isShowingWinNotification == false,
               game?.winnerIndex == nil,
@@ -234,9 +241,14 @@ struct ContentView: View {
         }
 
         let clearPreview = game?.playPileClearPreview(afterPlaying: [playedCard])
+        let pickupPreview = game?.playPilePickupPreviewAfterCurrentFaceDownReveal(at: index)
 
         Task {
             await animatePlayedCards([playedCard], from: .localSetup)
+
+            if let pickupPreview {
+                await animatePlayPilePickupIfNeeded(pickupPreview)
+            }
 
             let didPlay = await MainActor.run {
                 game?.playLocalFaceDownCard(at: index) == true
@@ -250,7 +262,9 @@ struct ContentView: View {
                 selectedHandCardIDs.removeAll()
             }
 
-            await animatePlayPileExplosionIfNeeded(clearPreview)
+            if pickupPreview == nil {
+                await animatePlayPileExplosionIfNeeded(clearPreview)
+            }
 
             await MainActor.run {
                 finishPostPlayPresentation()
@@ -260,16 +274,26 @@ struct ContentView: View {
 
     private func pickUpPlayPile() {
         guard cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
               playPileExplosion == nil,
               isShowingWinNotification == false,
               game?.winnerIndex == nil,
-              game?.pickUpPlayPileForLocalPlayer() == true else {
+              let pickupPreview = game?.playPilePickupPreviewForLocalPlayer() else {
             return
         }
 
-        selectedHandCardIDs.removeAll()
-        presentForcedPickupAlertIfNeeded()
-        scheduleComputerTurnIfNeeded()
+        Task {
+            await animatePlayPilePickupIfNeeded(pickupPreview)
+
+            await MainActor.run {
+                guard game?.pickUpPlayPileForLocalPlayer() == true else {
+                    return
+                }
+
+                selectedHandCardIDs.removeAll()
+                finishPostPlayPresentation()
+            }
+        }
     }
 
     private func presentForcedPickupAlertIfNeeded() {
@@ -277,6 +301,7 @@ struct ContentView: View {
               isShowingWinNotification == false,
               isAutoPlayingComputerTurn == false,
               cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
               playPileExplosion == nil,
               game?.winnerIndex == nil,
               game?.localPlayerRequiresForcedPickup == true else {
@@ -288,16 +313,30 @@ struct ContentView: View {
 
     private func confirmForcedPickup() {
         guard isShowingWinNotification == false,
+              cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
+              playPileExplosion == nil,
               game?.winnerIndex == nil,
-              game?.localPlayerRequiresForcedPickup == true else {
+              game?.localPlayerRequiresForcedPickup == true,
+              let pickupPreview = game?.playPilePickupPreviewForLocalPlayer() else {
             isShowingForcedPickupAlert = false
             return
         }
 
-        _ = game?.pickUpPlayPileForLocalPlayer()
-        selectedHandCardIDs.removeAll()
         isShowingForcedPickupAlert = false
-        scheduleComputerTurnIfNeeded()
+
+        Task {
+            await animatePlayPilePickupIfNeeded(pickupPreview)
+
+            await MainActor.run {
+                guard game?.pickUpPlayPileForLocalPlayer() == true else {
+                    return
+                }
+
+                selectedHandCardIDs.removeAll()
+                finishPostPlayPresentation()
+            }
+        }
     }
 
     private func scheduleComputerTurnIfNeeded() {
@@ -306,6 +345,7 @@ struct ContentView: View {
               game.isSetupComplete,
               game.winnerIndex == nil,
               cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
               playPileExplosion == nil,
               isShowingWinNotification == false,
               isShowingForcedPickupAlert == false,
@@ -321,37 +361,56 @@ struct ContentView: View {
             let plannedPlay = await MainActor.run {
                 guard let game = self.game,
                       game.winnerIndex == nil,
+                      self.playPilePickupAnimation == nil,
                       game.players[game.currentPlayerIndex].kind == .computer else {
                     self.isAutoPlayingComputerTurn = false
                     return nil as (
                         cards: [PlayingCard],
                         source: PlayAnimationSource,
                         faceDownIndex: Int?,
-                        clearPreview: PlayPileClearPreview?
+                        clearPreview: PlayPileClearPreview?,
+                        pickupPreview: PlayPilePickupPreview?
                     )?
                 }
 
                 guard let plannedPlay = game.plannedCurrentComputerPlay() else {
-                    return nil
+                    let pickupPreview = game.playPilePickupPreviewForCurrentComputerTurn()
+
+                    return (
+                        cards: [],
+                        source: .opponent(game.players[game.currentPlayerIndex].id),
+                        faceDownIndex: nil,
+                        clearPreview: nil,
+                        pickupPreview: pickupPreview
+                    )
                 }
 
                 let clearPreview = game.playPileClearPreview(afterPlaying: plannedPlay.cards)
+                let pickupPreview = plannedPlay.faceDownIndex.flatMap {
+                    game.playPilePickupPreviewAfterCurrentFaceDownReveal(at: $0)
+                }
 
                 return (
                     cards: plannedPlay.cards,
                     source: .opponent(game.players[game.currentPlayerIndex].id),
                     faceDownIndex: plannedPlay.faceDownIndex,
-                    clearPreview: clearPreview
+                    clearPreview: clearPreview,
+                    pickupPreview: pickupPreview
                 )
             }
 
-            if let plannedPlay {
+            if let plannedPlay, plannedPlay.cards.isEmpty == false {
                 await animatePlayedCards(plannedPlay.cards, from: plannedPlay.source)
+            }
+
+            if let plannedPlay {
+                await animatePlayPilePickupIfNeeded(plannedPlay.pickupPreview)
             }
 
             let didPlay = await MainActor.run {
                 guard let game = self.game,
                       game.winnerIndex == nil,
+                      self.playPilePickupAnimation == nil,
                       game.players[game.currentPlayerIndex].kind == .computer else {
                     self.isAutoPlayingComputerTurn = false
                     return false
@@ -365,7 +424,9 @@ struct ContentView: View {
             }
 
             if didPlay, let plannedPlay {
-                await animatePlayPileExplosionIfNeeded(plannedPlay.clearPreview)
+                if plannedPlay.pickupPreview == nil {
+                    await animatePlayPileExplosionIfNeeded(plannedPlay.clearPreview)
+                }
             }
 
             await MainActor.run {
@@ -389,6 +450,7 @@ struct ContentView: View {
     private func presentWinNotificationIfNeeded() {
         guard isShowingWinNotification == false,
               cardPlayAnimation == nil,
+              playPilePickupAnimation == nil,
               playPileExplosion == nil,
               let game,
               let winnerIndex = game.winnerIndex,
@@ -455,6 +517,29 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func animatePlayPilePickupIfNeeded(_ preview: PlayPilePickupPreview?) async {
+        guard let preview,
+              preview.cards.isEmpty == false else {
+            return
+        }
+
+        playPilePickupAnimation = PlayPilePickupAnimation(
+            cards: preview.cards,
+            receivingPlayerIndex: preview.receivingPlayerIndex,
+            hasArrived: false
+        )
+
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        withAnimation(.easeInOut(duration: 0.58)) {
+            playPilePickupAnimation?.hasArrived = true
+        }
+
+        try? await Task.sleep(nanoseconds: 620_000_000)
+        playPilePickupAnimation = nil
+    }
+
+    @MainActor
     private func animatePlayPileExplosionIfNeeded(_ preview: PlayPileClearPreview?) async {
         guard let preview else {
             return
@@ -481,6 +566,13 @@ struct CardPlayAnimation: Identifiable {
     let id = UUID()
     let cards: [PlayingCard]
     let source: PlayAnimationSource
+    var hasArrived: Bool
+}
+
+struct PlayPilePickupAnimation: Identifiable {
+    let id = UUID()
+    let cards: [PlayingCard]
+    let receivingPlayerIndex: Int
     var hasArrived: Bool
 }
 
@@ -739,6 +831,7 @@ struct GameScreen: View {
     let game: Game
     let selectedHandCardIDs: Set<PlayingCard.ID>
     let cardPlayAnimation: CardPlayAnimation?
+    let playPilePickupAnimation: PlayPilePickupAnimation?
     let playPileExplosion: PlayPileExplosion?
     let isGameFrozen: Bool
     let toggleHandCardSelection: (PlayingCard) -> Void
@@ -793,6 +886,16 @@ struct GameScreen: View {
                         overlay
                     }
 
+                    if let playPilePickupAnimation,
+                       let overlay = pickupAnimationOverlay(
+                        playPilePickupAnimation,
+                        anchors: anchors,
+                        proxy: proxy,
+                        metrics: metrics
+                       ) {
+                        overlay
+                    }
+
                     if let playPileExplosion,
                        let playPileAnchor = anchors[.playPile] {
                         PlayPileExplosionOverlay(
@@ -823,6 +926,34 @@ struct GameScreen: View {
             animation: animation,
             startRect: proxy[sourceAnchor],
             endRect: proxy[playPileAnchor],
+            cardWidth: min(metrics.handCardWidth, metrics.playPileCardWidth)
+        )
+    }
+
+    private func pickupAnimationOverlay(
+        _ animation: PlayPilePickupAnimation,
+        anchors: [PlayAnimationAnchorID: Anchor<CGRect>],
+        proxy: GeometryProxy,
+        metrics: GameScreenMetrics
+    ) -> PlayPilePickupAnimationOverlay? {
+        guard let playPileAnchor = anchors[.playPile],
+              game.players.indices.contains(animation.receivingPlayerIndex) else {
+            return nil
+        }
+
+        let receivingPlayer = game.players[animation.receivingPlayerIndex]
+        let destinationAnchorID: PlayAnimationAnchorID = receivingPlayer.kind == .localHuman
+            ? .localHand
+            : .opponent(receivingPlayer.id)
+
+        guard let destinationAnchor = anchors[destinationAnchorID] else {
+            return nil
+        }
+
+        return PlayPilePickupAnimationOverlay(
+            animation: animation,
+            startRect: proxy[playPileAnchor],
+            endRect: proxy[destinationAnchor],
             cardWidth: min(metrics.handCardWidth, metrics.playPileCardWidth)
         )
     }
@@ -921,6 +1052,7 @@ struct GameScreen: View {
                     isGameFrozen ||
                     isLocalTurn == false ||
                     cardPlayAnimation != nil ||
+                    playPilePickupAnimation != nil ||
                     playPileExplosion != nil ||
                     activeSource != .hand ||
                     selectedHandCardIDs.isEmpty
@@ -946,6 +1078,7 @@ struct GameScreen: View {
                             isGameFrozen ||
                             isLocalTurn == false ||
                             cardPlayAnimation != nil ||
+                            playPilePickupAnimation != nil ||
                             playPileExplosion != nil ||
                             activeSource != .hand
                         )
@@ -994,6 +1127,7 @@ struct GameScreen: View {
                             isGameFrozen ||
                             isLocalTurn == false ||
                             cardPlayAnimation != nil ||
+                            playPilePickupAnimation != nil ||
                             playPileExplosion != nil
                         )
                     } else {
@@ -1024,6 +1158,7 @@ struct GameScreen: View {
                         isGameFrozen ||
                         isLocalTurn == false ||
                         cardPlayAnimation != nil ||
+                        playPilePickupAnimation != nil ||
                         playPileExplosion != nil
                     )
                 }
@@ -1109,7 +1244,7 @@ struct GameScreen: View {
                         cardWidth: metrics.playPileCardWidth,
                         placeholderFontSize: metrics.playPileFontSize
                     )
-                    .opacity(playPileExplosion == nil ? 1 : 0)
+                    .opacity(playPilePickupAnimation == nil && playPileExplosion == nil ? 1 : 0)
                     .playAnimationAnchor(.playPile)
 
                     Button("Pick Up") {
@@ -1120,6 +1255,7 @@ struct GameScreen: View {
                         isGameFrozen ||
                         game.currentPlayerIndex != game.localPlayerIndex ||
                         cardPlayAnimation != nil ||
+                        playPilePickupAnimation != nil ||
                         playPileExplosion != nil ||
                         game.localPlayerActiveSource.allowsVoluntaryPickup == false ||
                         game.playPile.isEmpty
@@ -1252,6 +1388,68 @@ struct PlayedCardsGroup: View {
                     .zIndex(Double(index))
             }
         }
+    }
+}
+
+struct PlayPilePickupAnimationOverlay: View {
+    let animation: PlayPilePickupAnimation
+    let startRect: CGRect
+    let endRect: CGRect
+    let cardWidth: CGFloat
+
+    private var currentCenter: CGPoint {
+        let progress: CGFloat = animation.hasArrived ? 1 : 0
+        return CGPoint(
+            x: startRect.midX + (endRect.midX - startRect.midX) * progress,
+            y: startRect.midY + (endRect.midY - startRect.midY) * progress
+        )
+    }
+
+    var body: some View {
+        PickupCardsGroup(
+            cards: animation.cards,
+            cardWidth: cardWidth
+        )
+        .scaleEffect(animation.hasArrived ? 0.72 : 1)
+        .opacity(animation.hasArrived ? 0.12 : 1)
+        .position(currentCenter)
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+        .zIndex(110)
+    }
+}
+
+struct PickupCardsGroup: View {
+    let cards: [PlayingCard]
+    let cardWidth: CGFloat
+
+    private var visibleCards: [PlayingCard] {
+        Array(cards.suffix(5))
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
+                CardView(card: card, width: cardWidth)
+                    .offset(
+                        x: CGFloat(index) * cardWidth * 0.055,
+                        y: CGFloat(index) * cardWidth * 0.035
+                    )
+                    .rotationEffect(.degrees(Double(index - visibleCards.count / 2) * 2.2))
+                    .zIndex(Double(index))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Text("\(cards.count)")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .padding(6)
+                .background(Circle().fill(.black.opacity(0.5)))
+                .offset(x: 10, y: -10)
+        }
+        .frame(
+            width: cardWidth + CGFloat(max(visibleCards.count - 1, 0)) * cardWidth * 0.055,
+            height: PlayingCardLayout.height(forWidth: cardWidth) + CGFloat(max(visibleCards.count - 1, 0)) * cardWidth * 0.035
+        )
     }
 }
 
