@@ -208,6 +208,7 @@ Examples:
 - Current design requirement: voluntary Pick Up remains available only where Docs/GAME_RULES.md permits.
 - Current design requirement: voluntary Pick Up must not be confused with the forced pickup notification flow.
 - Current design requirement: voluntary Pick Up is disabled when the Play Pile is empty.
+- Current design requirement: a successful voluntary pickup triggers the Play Pile pickup animation defined in Section 16.
 
 ### New Game
 
@@ -243,13 +244,13 @@ Requirements:
 
 - Current design requirement: no Cancel action.
 - Current design requirement: cards do not move until the player confirms.
-- Current design requirement: tapping Pick Up automatically performs the forced pickup.
+- Current design requirement: tapping Pick Up begins the Play Pile pickup animation defined in Section 16 and automatically performs the required pickup exactly once.
 - Current design requirement: applies to forced pickup from hand phase.
 - Current design requirement: applies to forced pickup from face-up setup phase.
 - Current design requirement: does not apply to voluntary pickup.
 - Current design requirement: does not apply to computer players.
 - Current design requirement: does not apply to the illegal face-down reveal sequence.
-- Current design requirement: computer forced pickup remains automatic.
+- Current design requirement: computer forced pickup remains automatic and still uses the pickup animation defined in Section 16.
 - Current design requirement: prevent duplicate alerts.
 - Current design requirement: prevent duplicate pickup.
 - Current design requirement: prevent duplicate turn advancement.
@@ -299,6 +300,7 @@ When the player taps `New Game`:
 - Current design requirement: discard the completed game.
 - Current design requirement: clear selected card IDs.
 - Current design requirement: clear active card-play animation state.
+- Current design requirement: clear Play Pile pickup animation state.
 - Current design requirement: clear Play Pile explosion state.
 - Current design requirement: clear forced-pickup alert state.
 - Current design requirement: clear computer auto-play scheduling state.
@@ -356,19 +358,82 @@ Architecture:
 - Current design requirement: use temporary presentation overlay state.
 - Current design requirement: do not make SwiftUI animation state the source of gameplay truth.
 
-## 16. Computer Turn Pacing
+## 16. Play Pile Pickup Animation
+
+Current design requirement: whenever a player picks up the Play Pile, the pile should visibly slide toward that player using the reverse visual language of the normal card-play animation.
+
+This requirement applies to every actual Play Pile pickup, including:
+
+- Local human voluntary pickup.
+- Local human forced pickup after the player confirms `Pick Up` in the mandatory notification.
+- Computer-player pickup.
+- Pickup caused by an illegal face-down reveal.
+
+Gameplay source of truth:
+
+- Current design requirement: Docs/GAME_RULES.md defines when pickup is legal or mandatory and what cards move into the player's hand.
+- Current design requirement: the UI must not independently decide that a pickup should occur.
+- Current design requirement: `Game` remains the source of truth for the player receiving the pile and for turn progression.
+
+Destination:
+
+- Current design requirement: local human pickup travels from the Play Pile toward the local player's hand area.
+- Current design requirement: computer pickup travels from the Play Pile toward that specific opponent's player area.
+- Current design requirement: destination is derived from the actual receiving player index, not hard-coded by player count or screen position.
+
+Required sequence:
+
+1. Pickup is initiated by valid game flow.
+2. Capture a temporary presentation snapshot of the Play Pile before it visually disappears.
+3. Block new card interactions, overlapping animations, and the next computer action.
+4. Animate the pickup snapshot from the Play Pile toward the receiving player's area.
+5. Cards move as a compact stack or lightly staggered group, visually reversing the player-to-Play-Pile motion used for normal card play.
+6. As the cards reach the receiving player, they may slightly converge, scale down, and fade into the destination area.
+7. The Play Pile is visually empty and the receiving player's updated hand or hand count becomes the completed visible state.
+8. Turn progression and normal pacing continue only after the pickup presentation finishes.
+
+Visual treatment:
+
+- Current design requirement: movement should clearly originate at the Play Pile.
+- Current design requirement: movement should clearly terminate at the receiving player.
+- Current design requirement: preserve playing-card aspect ratio during motion.
+- Current design requirement: use a smooth reverse counterpart to the existing card-play animation rather than an unrelated effect.
+- Current design requirement: suggested duration is approximately 0.45 to 0.70 seconds.
+- Current design requirement: grouped cards may use slight stagger and small positional offsets so the movement reads as a pile of cards rather than a single card.
+- Current design requirement: do not use an explosion effect for pickup.
+- Current design requirement: use native SwiftUI only.
+
+Large-pile handling:
+
+- Current design requirement: the animation must communicate that the entire Play Pile is being picked up, not only the newest card.
+- Current design requirement: for a large pile, a compact grouped stack may represent the full pickup without requiring every card to remain individually readable during motion.
+- Current design requirement: do not create excessive rendering cost merely to animate dozens of separate card views.
+
+Architecture and synchronization:
+
+- Current design requirement: prefer reusing the existing card-animation overlay, geometry anchors, and player destination frames where practical.
+- Current design requirement: preserve enough temporary snapshot state to animate even if the Game model mutates the Play Pile immediately.
+- Current design requirement: alternatively, coordinate mutation timing cleanly if the existing architecture supports delaying visible completion until animation ends.
+- Current design requirement: do not duplicate pickup legality or turn-advancement logic in SwiftUI.
+- Current design requirement: the pickup must execute exactly once.
+- Current design requirement: turn advancement must execute exactly once.
+- Current design requirement: the next computer action must wait until the pickup animation finishes.
+- Current design requirement: starting a new game clears stale pickup-animation state.
+
+## 17. Computer Turn Pacing
 
 - Current design requirement: computer actions must be visible to the human player.
 - Current design requirement: use a brief pause between computer turns.
 - Current design requirement: approximately 1 second is acceptable for normal pacing.
 - Current design requirement: next computer action must not begin while card-play animation is active.
+- Current design requirement: next computer action must not begin while Play Pile pickup animation is active.
 - Current design requirement: next computer action must not begin while Play Pile explosion is active.
 - Current design requirement: next computer action must not begin while a modal interaction blocks progression.
 - Current design requirement: no computer action may begin after a winner exists.
 - Current design requirement: no computer action may begin while the win notification is active.
 - Current design requirement: do not rapidly skip through multiple computer actions invisibly.
 
-## 17. Play Pile Explosion
+## 18. Play Pile Explosion
 
 Current design requirement: trigger a Play Pile explosion whenever the Play Pile is cleared by:
 
@@ -413,11 +478,12 @@ Important:
 - Current design requirement: prevent overlapping explosions.
 - Current design requirement: starting a new game clears stale explosion state.
 
-## 18. Animation Architecture
+## 19. Animation Architecture
 
 - Current design requirement: gameplay state and presentation state remain separate.
-- Current design requirement: `Game.swift` is the source of truth for cards, turn, direction, legality, clears, Bomb detection, and winner state.
+- Current design requirement: `Game.swift` is the source of truth for cards, turn, direction, legality, clears, pickup behavior, Bomb detection, and winner state.
 - Current design requirement: `ContentView.swift` and SwiftUI presentation state may manage temporary card movement.
+- Current design requirement: SwiftUI presentation state may manage Play Pile pickup snapshots.
 - Current design requirement: SwiftUI presentation state may manage explosion snapshots.
 - Current design requirement: SwiftUI presentation state may manage alert visibility.
 - Current design requirement: SwiftUI presentation state may manage win-notification visibility.
@@ -427,7 +493,7 @@ Important:
 - Current design requirement: do not duplicate gameplay rules in view code.
 - Current design requirement: do not independently recalculate Bomb logic in the UI.
 
-## 19. Modal Interaction Rules
+## 20. Modal Interaction Rules
 
 While a modal alert is active:
 
@@ -441,7 +507,7 @@ Applicable alerts:
 - `No Legal Play`
 - Win notification.
 
-## 20. Visual Consistency
+## 21. Visual Consistency
 
 - Current design requirement: preserve current overall Bomb! identity.
 - Current design requirement: avoid unnecessary visual clutter.
@@ -452,7 +518,7 @@ Applicable alerts:
 - Current design requirement: preserve clear separation of interactive and informational elements.
 - Current design requirement: use subtle emphasis rather than oversized decoration.
 
-## 21. Accessibility and Usability
+## 22. Accessibility and Usability
 
 - Current design requirement: interactive controls must have reasonable tap targets.
 - Current design requirement: important game state must not rely only on color.
@@ -461,7 +527,7 @@ Applicable alerts:
 - Current design requirement: alerts must clearly state required action.
 - Current design requirement: horizontally scrollable hands must remain discoverable and usable.
 
-## 22. Open Design Decisions
+## 23. Open Design Decisions
 
 - Open design decision: exact final icon/text treatment for New Game.
 - Open design decision: exact final explosion particle intensity.
@@ -470,13 +536,12 @@ Applicable alerts:
 - Open design decision: whether the one-card face-up setup presentation rule changes if Docs/GAME_RULES.md changes.
 - Open design decision: whether additional animations are later added for:
   - Drawing.
-  - Pickup.
   - Initial deal.
   - Pile clear beyond explosion.
 
 Do not resolve these without explicit instruction.
 
-## 23. Implementation Notes
+## 24. Implementation Notes
 
 - Current design requirement: avoid hard-coded layout that only works for 3 players.
 - Current design requirement: preserve mobile aspect ratios.
@@ -485,10 +550,12 @@ Do not resolve these without explicit instruction.
 - Current design requirement: presentation delays must not mutate turn logic independently.
 - Current design requirement: current player and direction indicators must read actual game state.
 - Current design requirement: planned and executed computer card plays must remain visually consistent.
+- Current design requirement: pickup source and destination must remain visually consistent with the actual receiving player.
 - Current design requirement: use available screen geometry and safe area when calculating major layout sections.
 - Current design requirement: keep gameplay logic out of SwiftUI view bodies.
 
-## 24. UI Change Log
+## 25. UI Change Log
 
 - 2026-07-06: Authoritative UI specification created.
 - 2026-07-06: Added required modal win notification behavior for local human and computer winners, including animation sequencing, game freeze, duplicate prevention, and New Game flow.
+- 2026-07-06: Added required Play Pile pickup animation so the pile slides toward the receiving player as the reverse visual counterpart of normal card-play movement.
