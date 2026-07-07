@@ -1136,12 +1136,22 @@ struct GameScreen: View {
         let isLocalTurn = game.currentPlayerIndex == game.localPlayerIndex
 
         return VStack(spacing: metrics.playerInnerSpacing) {
-            PlayerBadge(
-                name: localPlayer.name,
-                count: nil,
-                color: .yellow,
-                compact: metrics.isShortScreen
-            )
+            HStack(spacing: metrics.compactPadding) {
+                PlayerBadge(
+                    name: localPlayer.name,
+                    count: nil,
+                    color: .yellow,
+                    compact: metrics.isShortScreen
+                )
+                .activeBadgeHighlight(
+                    isActive: isLocalTurn,
+                    compact: metrics.isShortScreen
+                )
+
+                if isLocalTurn {
+                    PlayingBadge(compact: metrics.isShortScreen)
+                }
+            }
 
             Text("Your 3 setup cards")
                 .font(.system(size: metrics.labelFontSize, weight: .semibold))
@@ -1242,10 +1252,6 @@ struct GameScreen: View {
         .padding(.vertical, metrics.panelPadding)
         .frame(maxWidth: .infinity)
         .background(PanelBackground())
-        .activePlayerIndicator(
-            isActive: isLocalTurn,
-            compact: metrics.isShortScreen
-        )
     }
 
     private func playButtonIsEnabled(
@@ -1631,12 +1637,6 @@ struct PlayPileExplosionOverlay: View {
 
             ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
                 CardView(card: card, width: cardWidth)
-                    .overlay(alignment: .topLeading) {
-                        PlayPileCornerLabel(
-                            card: card,
-                            width: cardWidth
-                        )
-                    }
                     .offset(cardOffset(at: index))
                     .rotationEffect(.degrees(cardRotation(at: index)))
                     .scaleEffect(cardScale(at: index))
@@ -1728,25 +1728,54 @@ struct ActivePlayerIndicatorModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .padding(isActive ? 3 : 0)
             .overlay {
                 if isActive {
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(.yellow.opacity(0.95), lineWidth: 2)
-                        .shadow(color: .yellow.opacity(0.45), radius: 6)
+                        .stroke(.yellow.opacity(0.82), lineWidth: compact ? 1.25 : 1.5)
+                        .shadow(color: .yellow.opacity(0.34), radius: compact ? 3 : 4)
                 }
             }
             .overlay(alignment: .topTrailing) {
                 if isActive {
-                    Text("Playing")
-                        .font(.system(size: compact ? 9 : 10, weight: .bold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, compact ? 6 : 7)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(.yellow))
-                        .offset(x: 4, y: -5)
+                    PlayingBadge(compact: true)
+                        .padding(.top, 2)
+                        .padding(.trailing, 2)
                 }
             }
+    }
+}
+
+struct ActiveBadgeHighlightModifier: ViewModifier {
+    let isActive: Bool
+    let compact: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if isActive {
+                    Capsule()
+                        .stroke(.yellow.opacity(0.9), lineWidth: compact ? 1.25 : 1.5)
+                        .shadow(color: .yellow.opacity(0.35), radius: compact ? 3 : 4)
+                }
+            }
+    }
+}
+
+struct PlayingBadge: View {
+    var compact: Bool = false
+
+    var body: some View {
+        Text("Playing")
+            .font(.system(size: compact ? 9 : 10, weight: .bold))
+            .foregroundStyle(.black)
+            .lineLimit(1)
+            .padding(.horizontal, compact ? 7 : 8)
+            .padding(.vertical, compact ? 2 : 3)
+            .background(
+                Capsule()
+                    .fill(.yellow)
+                    .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
+            )
     }
 }
 
@@ -1754,6 +1783,15 @@ extension View {
     func activePlayerIndicator(isActive: Bool, compact: Bool) -> some View {
         modifier(
             ActivePlayerIndicatorModifier(
+                isActive: isActive,
+                compact: compact
+            )
+        )
+    }
+
+    func activeBadgeHighlight(isActive: Bool, compact: Bool) -> some View {
+        modifier(
+            ActiveBadgeHighlightModifier(
                 isActive: isActive,
                 compact: compact
             )
@@ -2279,24 +2317,110 @@ struct FaceDownCountView: View {
 struct CardBackView: View {
     var width: CGFloat = 70
 
+    private var height: CGFloat {
+        PlayingCardLayout.height(forWidth: width)
+    }
+
+    private var cornerRadius: CGFloat {
+        max(5, width * 0.12)
+    }
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 10)
-            .fill(.red)
-            .frame(
-                width: width,
-                height: PlayingCardLayout.height(forWidth: width)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(.white, lineWidth: 4)
-                    .padding(5)
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Color(red: 0.98, green: 0.96, blue: 0.90))
+
+            RoundedRectangle(cornerRadius: max(3, width * 0.075))
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.72, green: 0.02, blue: 0.04),
+                            Color(red: 0.48, green: 0.01, blue: 0.035)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(width * 0.08)
+
+            CardBackPatternView(width: width)
+                .padding(width * 0.13)
+                .clipShape(RoundedRectangle(cornerRadius: max(3, width * 0.06)))
+
+            RoundedRectangle(cornerRadius: max(3, width * 0.075))
+                .stroke(.white.opacity(0.95), lineWidth: max(1.5, width * 0.035))
+                .padding(width * 0.08)
+
+            RoundedRectangle(cornerRadius: max(2, width * 0.05))
+                .stroke(.white.opacity(0.55), lineWidth: max(0.7, width * 0.012))
+                .padding(width * 0.19)
+
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(Color.black.opacity(0.34), lineWidth: max(0.75, width * 0.014))
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .shadow(color: .black.opacity(0.28), radius: max(1.5, width * 0.032), y: max(1, width * 0.02))
+    }
+}
+
+struct CardBackPatternView: View {
+    let width: CGFloat
+
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+
+            ZStack {
+                ForEach(0..<4, id: \.self) { row in
+                    ForEach(0..<3, id: \.self) { column in
+                        CardBackDiamondShape()
+                            .stroke(.white.opacity(0.28), lineWidth: max(0.6, width * 0.01))
+                            .frame(width: width * 0.13, height: width * 0.13)
+                            .position(
+                                x: size.width * (0.24 + CGFloat(column) * 0.26),
+                                y: size.height * (0.20 + CGFloat(row) * 0.20)
+                            )
+                    }
+                }
+
+                Capsule()
+                    .stroke(.white.opacity(0.38), lineWidth: max(0.8, width * 0.012))
+                    .frame(width: width * 0.34, height: width * 0.72)
+
+                Capsule()
+                    .stroke(.white.opacity(0.32), lineWidth: max(0.8, width * 0.01))
+                    .frame(width: width * 0.18, height: width * 0.52)
+                    .rotationEffect(.degrees(90))
+
+                CardBackDiamondShape()
+                    .fill(.white.opacity(0.25))
+                    .frame(width: width * 0.16, height: width * 0.16)
+
+                ForEach([CGFloat(0.12), CGFloat(0.88)], id: \.self) { yPosition in
+                    HStack(spacing: width * 0.045) {
+                        ForEach(0..<5, id: \.self) { _ in
+                            Circle()
+                                .fill(.white.opacity(0.34))
+                                .frame(width: width * 0.035, height: width * 0.035)
+                        }
+                    }
+                    .position(x: size.width * 0.5, y: size.height * yPosition)
+                }
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(.white.opacity(0.8), lineWidth: 1)
-                    .padding(15)
-            }
-            .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
+        }
+    }
+}
+
+struct CardBackDiamondShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -2354,12 +2478,6 @@ struct PlayPileStackView: View {
                 HStack(spacing: -cardWidth * 0.18) {
                     ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
                         CardView(card: card, width: cardWidth)
-                            .overlay(alignment: .topLeading) {
-                                PlayPileCornerLabel(
-                                    card: card,
-                                    width: cardWidth
-                                )
-                            }
                             .zIndex(Double(index))
                     }
                 }
