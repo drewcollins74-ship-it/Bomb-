@@ -309,3 +309,110 @@ Before considering the task complete:
 7. Compare physical readability at normal device scale, not only a zoomed simulator screenshot.
 8. Review the diff for accidental gameplay changes.
 9. Confirm `Bomb/Game.swift` is unchanged.
+
+## 13. Additional Top-Space and High-Priority Card Enlargement Pass
+
+A subsequent visual review shows that the active game screen still leaves recoverable vertical space near the top and that opponent cards and Play Pile cards remain smaller than necessary.
+
+This section is the current priority for the next implementation pass.
+
+### 13.1 Move the Top Content Higher
+
+Required:
+
+- Reduce remaining unused vertical space between the safe-area boundary and the header row.
+- Move the menu, restart/New Game control, Bomb! title, and settings control higher while still respecting the actual safe area.
+- Tighten vertical spacing between:
+  - the header row
+  - the `Opponents` label
+  - opponent name/hand-count rows
+  - opponent card rows
+  - the status/action row below opponents
+- Review `topPadding`, `headerHeight`, `sectionSpacing`, and opponent-section internal spacing together.
+- Do not use a one-device negative Y offset.
+- Do not overlap status-bar content, Dynamic Island content, signal indicators, battery indicators, or other system UI.
+
+Acceptance requirement:
+
+- On the primary iPhone portrait layout, the top content must be visibly higher than the previous implementation while remaining safely below system UI.
+
+### 13.2 Opponent Card Enlargement Is Now a Higher Priority
+
+The current opponent cards are still too small relative to the available space.
+
+Required:
+
+- Increase `opponentCardWidth` materially when responsive space allows.
+- Prefer slightly tighter non-card spacing before giving up opponent card size.
+- Preserve opponent name and `Hand: N` readability.
+- Preserve face-up/face-down setup-card correspondence.
+- For 4- and 5-player layouts, size cards responsively by opponent count if necessary.
+- Do not force the smallest 5-player card width onto 2- or 3-player layouts.
+- Do not create overlap between opponent tiles or between opponents and the center table area.
+
+Priority rule:
+
+- After safe top-spacing reduction, reclaimed space should be used for larger opponent cards before being spent on decorative whitespace.
+
+### 13.3 Play Pile Enlargement Is Now a Higher Priority
+
+The Play Pile remains the central gameplay focus and should be easier to read.
+
+Required:
+
+- Increase `playPileCardWidth` materially where layout allows.
+- Continue displaying up to the 3 most recent cards.
+- Preserve light horizontal overlap so underlying cards remain identifiable.
+- Keep the newest/top card visually dominant.
+- Preserve readable rank/suit information on underlying cards.
+- Reposition or resize the Play Pile count badge if needed so it does not obscure critical card information.
+- Ensure the enlarged Play Pile does not overlap:
+  - Draw Pile
+  - Discard Pile
+  - `Pick Up`
+  - the local Player / Playing row
+
+Priority rule:
+
+- The Play Pile should be as close as practical to local hand-card size without breaking the three-pile center layout.
+
+### 13.4 Metric Rebalancing for This Pass
+
+Review and adjust at minimum:
+
+- `topPadding`
+- `headerHeight`
+- `sectionSpacing`
+- `opponentsHeight`
+- opponent-section internal spacing
+- `centerHeight`
+- `playerHeight`
+- `opponentCardWidth`
+- `pileCardWidth`
+- `playPileCardWidth`
+
+Required:
+
+- Treat these values as an interdependent layout system.
+- Do not solve the request by changing only one maximum-width constant.
+- Use responsive clamps and available geometry.
+- Preserve all card aspect ratios.
+- Preserve 2-through-5-player support.
+
+### 13.5 Validation for This Pass
+
+Verify all of the following:
+
+- top content is visibly higher than before
+- no system-UI overlap
+- opponent cards are visibly larger in 2- and 3-player layouts
+- opponent cards enlarge where feasible in 4- and 5-player layouts
+- Play Pile cards are visibly larger
+- up to 3 recent Play Pile cards remain understandable
+- no opponent overlap
+- no opponent-to-center overlap
+- no Play Pile overlap with Draw or Discard piles
+- no Play Pile overlap with `Pick Up`
+- no Play Pile overlap with local Player / Playing controls
+- no card distortion
+- `Bomb/Game.swift` remains unchanged
