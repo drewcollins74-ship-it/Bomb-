@@ -1392,7 +1392,7 @@ struct GameScreen: View {
                 )
             }
 
-            HStack(alignment: .bottom) {
+            HStack(alignment: .bottom, spacing: metrics.centerPileColumnSpacing) {
                 VStack(spacing: metrics.pileInnerSpacing) {
                     PileLabel(text: "Draw Pile")
                     CardBackStackView(
@@ -1400,7 +1400,7 @@ struct GameScreen: View {
                         cardWidth: metrics.pileCardWidth
                     )
                 }
-                .frame(maxWidth: .infinity)
+                .frame(width: metrics.sidePileColumnWidth)
 
                 VStack(spacing: metrics.pileInnerSpacing) {
                     PileLabel(text: "Play Pile")
@@ -1426,7 +1426,8 @@ struct GameScreen: View {
                         game.playPile.isEmpty
                     )
                 }
-                .frame(maxWidth: .infinity)
+                .frame(width: metrics.playPileColumnWidth)
+                .layoutPriority(1)
 
                 VStack(spacing: metrics.pileInnerSpacing) {
                     PileLabel(text: "Discard Pile")
@@ -1446,8 +1447,9 @@ struct GameScreen: View {
                             }
                     }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(width: metrics.sidePileColumnWidth)
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, metrics.panelPadding)
         .padding(.vertical, metrics.panelPadding)
@@ -1846,7 +1848,7 @@ struct GameScreenMetrics {
     }
 
     var centerHeight: CGFloat {
-        clamp(safeHeight * (opponentRows > 1 ? 0.205 : 0.225), min: 124, max: 188)
+        clamp(safeHeight * (opponentRows > 1 ? 0.225 : 0.25), min: 144, max: 205)
     }
 
     var opponentsHeight: CGFloat {
@@ -2029,13 +2031,30 @@ struct GameScreenMetrics {
         clamp(centerHeight * 0.026, min: 3, max: 5)
     }
 
+    var centerPileColumnSpacing: CGFloat {
+        clamp(contentWidth * 0.018, min: 5, max: 8)
+    }
+
+    private var centerPilesAvailableWidth: CGFloat {
+        contentWidth - panelPadding * 2
+    }
+
+    var playPileColumnWidth: CGFloat {
+        clamp(centerPilesAvailableWidth * 0.45, min: contentWidth * 0.38, max: contentWidth * 0.48)
+    }
+
+    var sidePileColumnWidth: CGFloat {
+        let remainingWidth = centerPilesAvailableWidth - playPileColumnWidth - centerPileColumnSpacing * 2
+        return max(0, remainingWidth / 2)
+    }
+
     var pileCardWidth: CGFloat {
-        let widthBased = contentWidth / 3.75
+        let widthBased = sidePileColumnWidth * 0.72
         let labelHeight: CGFloat = 22
         let turnHeight = turnFontSize + compactPadding * 2
         let available = centerHeight - panelPadding * 2 - turnHeight - centerInnerSpacing - labelHeight - pileInnerSpacing
         let heightBased = available * PlayingCardLayout.aspectRatio
-        return clamp(min(widthBased, heightBased), min: 46, max: 82)
+        return clamp(min(widthBased, heightBased), min: 44, max: 62)
     }
 
     var playPileFontSize: CGFloat {
@@ -2043,13 +2062,17 @@ struct GameScreenMetrics {
     }
 
     var playPileCardWidth: CGFloat {
-        let stackWidthFactor: CGFloat = 2.28
-        let centerColumnWidth = contentWidth / 3
-        let widthBased = (centerColumnWidth + compactPadding * 1.5) / stackWidthFactor
+        let stackWidthFactor: CGFloat = 2.1
+        let labelHeight: CGFloat = 22
+        let pickupHeight = playPileFontSize * 1.3
+        let turnHeight = turnFontSize + compactPadding * 2
+        let availableHeight = centerHeight - panelPadding * 2 - turnHeight - centerInnerSpacing - labelHeight - pickupHeight - pileInnerSpacing * 2
+        let heightBased = availableHeight * PlayingCardLayout.aspectRatio
+        let widthBased = playPileColumnWidth / stackWidthFactor
         return clamp(
-            min(handCardWidth, pileCardWidth, widthBased),
-            min: pileCardWidth * 0.76,
-            max: handCardWidth
+            min(widthBased, heightBased),
+            min: pileCardWidth * 1.04,
+            max: 82
         )
     }
 
@@ -2444,7 +2467,7 @@ struct PlayPileStackView: View {
                             .foregroundStyle(.white.opacity(0.75))
                     }
             } else {
-                HStack(spacing: -cardWidth * 0.36) {
+                HStack(spacing: -cardWidth * 0.45) {
                     ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
                         CardView(card: card, width: cardWidth)
                             .zIndex(Double(index))
@@ -2454,14 +2477,14 @@ struct PlayPileStackView: View {
         }
         .overlay(alignment: .topTrailing) {
             Text("\(cards.count)")
-                .font(.caption.bold())
+                .font(.caption2.bold())
                 .foregroundStyle(.white)
-                .padding(6)
+                .padding(5)
                 .background(Circle().fill(.black.opacity(0.5)))
-                .offset(x: 10, y: -10)
+                .offset(x: -2, y: -7)
         }
         .frame(
-            width: cardWidth * 2.28,
+            width: cardWidth * 2.1,
             height: PlayingCardLayout.height(forWidth: cardWidth)
         )
     }
