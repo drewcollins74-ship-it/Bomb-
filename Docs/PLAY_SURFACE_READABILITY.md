@@ -300,6 +300,10 @@ This refresh is complete only when:
 - Central pile cards are visibly easier to read where responsive space permits.
 - Play Pile cards are materially larger than the previous implementation.
 - The Play Pile is visually more prominent than the Draw and Discard piles.
+- Empty space above the playable content is materially reduced from the previous implementation.
+- In 4- and 5-player layouts, local human setup cards remain comfortably readable.
+- In 4- and 5-player layouts, local human hand cards remain comfortably readable.
+- Local human card readability is prioritized over opponent-card size when space is constrained.
 - Rank/suit indexes remain readable.
 - All cards preserve one shared aspect ratio.
 - Horizontal hand scrolling still works for large hands.
@@ -430,3 +434,58 @@ Verify all of the following:
 - no Play Pile overlap with local Player / Playing controls
 - no card distortion
 - `Bomb/Game.swift` remains unchanged
+
+### 13.6 Further Top-Space Reduction Is Still Required
+
+A subsequent visual review shows that the active game screen still leaves too much unused vertical space above the playable content.
+
+Required:
+
+- Reduce remaining empty vertical space between the safe-area boundary and the header row further.
+- Move the playable content upward again while still respecting the actual safe area.
+- Tighten spacing between:
+  - header controls
+  - Bomb! title
+  - `Opponents` label
+  - opponent rows
+  - status/action row
+  - center piles
+- Review both major section heights and internal section spacing; do not assume the remaining gap is caused only by `topPadding`.
+- Trace every layout term that contributes to the top gap, including fixed frames, vertical padding, section spacing, and safe-area handling.
+- Do not use hard-coded one-device offsets as the primary fix.
+- Do not overlap the status bar, Dynamic Island, or system indicators.
+
+Acceptance requirement:
+
+- On the primary iPhone portrait layout, the top section must be visibly higher than the current implementation and must leave materially less empty space above the game content.
+
+### 13.7 In 4- and 5-Player Layouts, Human Cards Must Not Become Too Small
+
+A subsequent visual review shows that in 4- and 5-player layouts, the local human player's cards become too small to read comfortably.
+
+Required:
+
+- Preserve comfortable readability for the local human player's setup cards and hand cards in 4- and 5-player layouts.
+- Do not allow the human player's cards to shrink below a reasonable readable minimum merely to fit more opponent content above.
+- The local human player's cards have higher readability priority than opponent cards.
+- If space is constrained in 4- or 5-player layouts, prefer:
+  1. reducing excess top whitespace,
+  2. tightening vertical spacing,
+  3. making opponent sections more compact,
+  4. scaling opponent cards by opponent count,
+  5. using horizontal scrolling for the local hand,
+  before shrinking the human player's cards further.
+- `handCardWidth` and `playerSetupCardWidth` should maintain a readable minimum in 4- and 5-player layouts.
+- Do not force the local human player's cards to match the smallest opponent-card sizing.
+- Preserve one shared playing-card aspect ratio.
+- Trace every formula that reduces `handCardWidth` or `playerSetupCardWidth` as player count increases.
+- Fix the structural cause rather than applying a screenshot-specific minimum after the fact.
+- If the current layout derives local card size from leftover `playerHeight`, ensure opponent growth does not consume so much height that local cards become unreadable.
+
+Acceptance requirements:
+
+- In 4-player layouts, local human setup cards remain comfortably readable at normal device scale.
+- In 5-player layouts, local human setup cards remain comfortably readable at normal device scale.
+- In 4-player layouts, local human hand cards remain comfortably readable at normal device scale.
+- In 5-player layouts, local human hand cards remain comfortably readable at normal device scale.
+- Local human card readability takes precedence over preserving maximum opponent-card size when the layout is constrained.
