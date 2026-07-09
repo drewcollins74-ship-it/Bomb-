@@ -983,9 +983,6 @@ struct GameScreen: View {
 
                     localPlayerSection(metrics: metrics)
                         .frame(height: metrics.playerHeight)
-
-                    footer(metrics: metrics)
-                        .frame(height: metrics.footerHeight)
                 }
                 .padding(.horizontal, metrics.outerPadding)
                 .padding(.top, metrics.topPadding)
@@ -1458,32 +1455,6 @@ struct GameScreen: View {
         .background(PanelBackground())
     }
 
-    private func footer(metrics: GameScreenMetrics) -> some View {
-        HStack(spacing: metrics.compactPadding) {
-            Image(systemName: "info.circle")
-                .font(.system(size: metrics.footerIconSize))
-
-            Text("Goal:")
-                .bold()
-
-            Text("Be the first to get rid of all cards.")
-                .lineLimit(2)
-
-            Spacer()
-
-            Button("Rules") {}
-                .buttonStyle(.bordered)
-                .tint(.white)
-        }
-        .font(.system(size: metrics.footerFontSize))
-        .foregroundStyle(.white)
-        .padding(.horizontal, metrics.panelPadding)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(.black.opacity(0.35))
-        )
-    }
-
     private func opponentColor(at index: Int) -> Color {
         let colors: [Color] = [.blue, .green, .purple, .orange]
         return colors[index % colors.count]
@@ -1851,35 +1822,31 @@ struct GameScreenMetrics {
     }
 
     var topPadding: CGFloat {
-        safeAreaInsets.top + clamp(safeHeight * 0.006, min: 3, max: 8)
+        safeAreaInsets.top + clamp(safeHeight * 0.0025, min: 1, max: 3)
     }
 
     var bottomPadding: CGFloat {
-        safeAreaInsets.bottom + clamp(safeHeight * 0.006, min: 3, max: 8)
+        safeAreaInsets.bottom + clamp(safeHeight * 0.004, min: 2, max: 5)
     }
 
     var sectionSpacing: CGFloat {
-        clamp(safeHeight * 0.008, min: 5, max: 10)
+        clamp(safeHeight * 0.006, min: 4, max: 8)
     }
 
     private var availableHeight: CGFloat {
-        safeHeight - topPadding + safeAreaInsets.top - bottomPadding + safeAreaInsets.bottom - sectionSpacing * 4
+        safeHeight - topPadding + safeAreaInsets.top - bottomPadding + safeAreaInsets.bottom - sectionSpacing * 3
     }
 
     var headerHeight: CGFloat {
-        clamp(safeHeight * 0.075, min: 44, max: 60)
-    }
-
-    var footerHeight: CGFloat {
-        clamp(safeHeight * 0.062, min: 40, max: 54)
+        clamp(safeHeight * 0.06, min: 40, max: 50)
     }
 
     var playerHeight: CGFloat {
-        availableHeight - headerHeight - footerHeight - opponentsHeight - centerHeight
+        availableHeight - headerHeight - opponentsHeight - centerHeight
     }
 
     var centerHeight: CGFloat {
-        clamp(safeHeight * (opponentRows > 1 ? 0.18 : 0.21), min: 112, max: 165)
+        clamp(safeHeight * (opponentRows > 1 ? 0.19 : 0.22), min: 118, max: 178)
     }
 
     var opponentsHeight: CGFloat {
@@ -1888,9 +1855,13 @@ struct GameScreenMetrics {
         let rowsHeight = CGFloat(opponentRows) * rowContentHeight
         let rowSpacingHeight = CGFloat(max(0, opponentRows - 1)) * opponentRowSpacing
         let desiredHeight = panelPadding * 2 + titleHeight + opponentsInnerSpacing + rowsHeight + rowSpacingHeight
-        let maximumHeight = availableHeight - headerHeight - footerHeight - centerHeight - 170
+        let maximumHeight = availableHeight - headerHeight - centerHeight - minimumPlayerHeight
 
         return min(desiredHeight, maximumHeight)
+    }
+
+    private var minimumPlayerHeight: CGFloat {
+        isShortScreen ? 218 : 252
     }
 
     var panelPadding: CGFloat {
@@ -1906,11 +1877,11 @@ struct GameScreenMetrics {
     }
 
     var iconButtonSize: CGFloat {
-        clamp(headerHeight * 0.75, min: 36, max: 48)
+        clamp(headerHeight * 0.86, min: 40, max: 44)
     }
 
     var titleFontSize: CGFloat {
-        clamp(headerHeight * 0.48, min: 25, max: 34)
+        clamp(headerHeight * 0.52, min: 24, max: 30)
     }
 
     var titleHorizontalPadding: CGFloat {
@@ -1941,16 +1912,8 @@ struct GameScreenMetrics {
         clamp(safeHeight * 0.018, min: 13, max: 17)
     }
 
-    var footerFontSize: CGFloat {
-        clamp(safeHeight * 0.017, min: 12, max: 15)
-    }
-
-    var footerIconSize: CGFloat {
-        clamp(footerHeight * 0.48, min: 20, max: 28)
-    }
-
     var playerInnerSpacing: CGFloat {
-        clamp(playerHeight * 0.026, min: 5, max: 8)
+        clamp(playerHeight * 0.022, min: 5, max: 8)
     }
 
     var playerSetupSpacing: CGFloat {
@@ -1975,25 +1938,13 @@ struct GameScreenMetrics {
         let badgeHeight: CGFloat = isShortScreen ? 28 : 34
         let available = playerHeight - panelPadding * 2 - labelHeight - badgeHeight - playerInnerSpacing * 4
         let heightBased = available / (1 / PlayingCardLayout.aspectRatio + PlayingCardLayout.stackedHeight(forWidth: 1))
-        return clamp(min(widthBased, heightBased), min: 38, max: 64)
+        return clamp(min(widthBased, heightBased), min: 38, max: 82)
     }
 
     var handCardWidth: CGFloat {
         let widthBased = (contentWidth - handCardSpacing * 2) / 3
-        let countBasedScale: CGFloat
 
-        switch localHandCount {
-        case 0...3:
-            countBasedScale = 1
-        case 4...6:
-            countBasedScale = 0.92
-        case 7...10:
-            countBasedScale = 0.82
-        default:
-            countBasedScale = 0.72
-        }
-
-        return clamp(min(widthBased, playerSetupCardWidth) * countBasedScale, min: 34, max: 62)
+        return clamp(min(widthBased, playerSetupCardWidth), min: 38, max: 82)
     }
 
     var opponentsInnerSpacing: CGFloat {
@@ -2040,7 +1991,8 @@ struct GameScreenMetrics {
         let columns = CGFloat(opponentColumns)
         let availableWidth = contentWidth - panelPadding * 2 - opponentSpacing * (columns - 1)
         let tileWidth = availableWidth / columns
-        return clamp((tileWidth - 12) / 3, min: 24, max: 44)
+        let maxWidth: CGFloat = opponentRows > 1 ? 50 : 52
+        return clamp((tileWidth - 10) / 3, min: 24, max: maxWidth)
     }
 
     var opponentCardWidth: CGFloat {
@@ -2049,24 +2001,24 @@ struct GameScreenMetrics {
         let availableTileHeight = availableRowsHeight / CGFloat(opponentRows)
         let heightBased = (availableTileHeight - opponentBadgeHeight - opponentsInnerSpacing) / PlayingCardLayout.stackedHeight(forWidth: 1)
 
-        return clamp(min(opponentWidthBasedCardWidth, heightBased), min: 24, max: 44)
+        return clamp(min(opponentWidthBasedCardWidth, heightBased), min: 24, max: opponentRows > 1 ? 50 : 52)
     }
 
     var centerInnerSpacing: CGFloat {
-        clamp(centerHeight * 0.07, min: 5, max: 12)
+        clamp(centerHeight * 0.055, min: 5, max: 10)
     }
 
     var pileInnerSpacing: CGFloat {
-        clamp(centerHeight * 0.04, min: 4, max: 7)
+        clamp(centerHeight * 0.032, min: 4, max: 6)
     }
 
     var pileCardWidth: CGFloat {
-        let widthBased = contentWidth / 4.2
+        let widthBased = contentWidth / 3.95
         let labelHeight: CGFloat = 22
         let turnHeight = turnFontSize + compactPadding * 2
         let available = centerHeight - panelPadding * 2 - turnHeight - centerInnerSpacing - labelHeight - pileInnerSpacing
         let heightBased = available * PlayingCardLayout.aspectRatio
-        return clamp(min(widthBased, heightBased), min: 38, max: 62)
+        return clamp(min(widthBased, heightBased), min: 42, max: 76)
     }
 
     var playPileFontSize: CGFloat {
@@ -2074,12 +2026,12 @@ struct GameScreenMetrics {
     }
 
     var playPileCardWidth: CGFloat {
-        let stackWidthFactor: CGFloat = 2.64
+        let stackWidthFactor: CGFloat = 2.5
         let centerColumnWidth = contentWidth / 3
         let widthBased = (centerColumnWidth - compactPadding) / stackWidthFactor
         return clamp(
             min(handCardWidth, pileCardWidth, widthBased),
-            min: pileCardWidth * 0.68,
+            min: pileCardWidth * 0.7,
             max: handCardWidth
         )
     }
@@ -2475,7 +2427,7 @@ struct PlayPileStackView: View {
                             .foregroundStyle(.white.opacity(0.75))
                     }
             } else {
-                HStack(spacing: -cardWidth * 0.18) {
+                HStack(spacing: -cardWidth * 0.25) {
                     ForEach(Array(visibleCards.enumerated()), id: \.element.id) { index, card in
                         CardView(card: card, width: cardWidth)
                             .zIndex(Double(index))
@@ -2492,7 +2444,7 @@ struct PlayPileStackView: View {
                 .offset(x: 10, y: -10)
         }
         .frame(
-            width: cardWidth * 2.64,
+            width: cardWidth * 2.5,
             height: PlayingCardLayout.height(forWidth: cardWidth)
         )
     }
