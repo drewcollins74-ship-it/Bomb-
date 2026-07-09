@@ -8,7 +8,7 @@ Read this together with:
 - `Docs/VISUAL_REFRESH.md`
 - `Docs/GAME_RULES.md`
 
-Where this document is more specific about the active-game footer, top-header spacing, play-surface allocation, or card sizing, this document controls the current refresh.
+Where this document is more specific about the active-game footer, top-header spacing, play-surface allocation, safe-area handling, or card sizing, this document controls the current refresh.
 
 Gameplay behavior remains authoritative in `Docs/GAME_RULES.md`.
 
@@ -67,7 +67,7 @@ Required:
 - Keep all header controls comfortably tappable.
 - Keep horizontal alignment visually balanced.
 - Do not use a hard-coded negative Y offset that only works on one iPhone.
-- Use `geometry.safeAreaInsets` and normal SwiftUI layout flow.
+- Use actual safe-area information and normal SwiftUI layout flow.
 
 The intended result is less dead space above the game and more usable play-surface height below.
 
@@ -489,3 +489,82 @@ Acceptance requirements:
 - In 4-player layouts, local human hand cards remain comfortably readable at normal device scale.
 - In 5-player layouts, local human hand cards remain comfortably readable at normal device scale.
 - Local human card readability takes precedence over preserving maximum opponent-card size when the layout is constrained.
+
+### 13.8 Safe-Area Audit and Dynamic-Island Gap Reduction
+
+A subsequent visual review shows that the remaining top gap may be caused by duplicated or unnecessary safe-area accounting rather than only by a large `topPadding` constant.
+
+This is a required diagnostic and implementation pass.
+
+Required audit:
+
+- Inspect the complete active-game view hierarchy before changing constants.
+- Determine whether a parent container already positions content below the top safe area.
+- Search for every source of top inset or top spacing, including:
+  - `geometry.safeAreaInsets.top`
+  - `.safeAreaPadding(.top)`
+  - `.safeAreaInset(edge: .top)`
+  - `.padding(.top, ...)`
+  - custom `topPadding`
+  - fixed `headerHeight`
+  - internal vertical padding inside `header(metrics:)`
+  - top-level `VStack` spacing
+  - parent containers that already respect safe areas
+  - `ignoresSafeArea` usage that changes which geometry includes system regions
+- Trace the Y-position of the first header content from the root active-game view downward.
+- Identify every term contributing vertical space above the header.
+
+Safe-area rule:
+
+- The effective top safe-area inset must be counted exactly once.
+- Do not add `geometry.safeAreaInsets.top` again if the parent layout has already placed the content below the safe-area boundary.
+- Do not combine multiple safe-area mechanisms unless each contribution is intentional and non-duplicative.
+- The intended relationship is:
+  1. system status / Dynamic Island region
+  2. actual safe-area boundary
+  3. small intentional visual gap
+  4. header controls
+- Do not leave a second safe-area-sized blank band below the actual safe-area boundary.
+
+Structural fix requirements:
+
+- Fix duplicate inset accounting before tuning cosmetic constants.
+- Remove unnecessary top inset or padding structurally.
+- Reduce excessive fixed `headerHeight` if it reserves blank space.
+- Reduce unnecessary internal header vertical padding.
+- Tighten section spacing below the header after the safe-area path is correct.
+- Do not use an arbitrary negative Y offset as the primary solution.
+- Do not use device-specific magic numbers as the primary solution.
+- Do not move controls under system UI.
+
+Reclaimed-space priority:
+
+1. protect local human hand-card readability
+2. protect local human setup-card readability
+3. enlarge the Play Pile
+4. enlarge opponent cards where responsive space permits
+5. preserve safe separation between controls and cards
+
+Acceptance requirements:
+
+- The safe-area handling path is explicitly audited.
+- Any duplicated top inset is removed.
+- The effective top safe-area inset is counted exactly once.
+- The header sits materially closer to the actual safe-area boundary than before.
+- Only a small intentional gap remains below the safe-area boundary.
+- No status-bar, Dynamic Island, signal, Wi-Fi, or battery overlap occurs.
+- Reclaimed height benefits gameplay layout rather than becoming new decorative whitespace.
+- 2-through-5-player layouts remain supported.
+- `Bomb/Game.swift` remains unchanged.
+
+Required implementation report:
+
+1. whether the top safe-area inset was being double-counted
+2. every source of vertical space found above the header
+3. which source or sources were removed or reduced
+4. previous and new `topPadding` behavior
+5. previous and new `headerHeight` behavior
+6. devices or simulators tested
+7. player counts tested
+8. any remaining top-layout constraints
+9. confirmation that `Bomb/Game.swift` was not modified
