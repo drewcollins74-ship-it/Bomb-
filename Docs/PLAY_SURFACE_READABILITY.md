@@ -136,12 +136,21 @@ Required:
 ### 5.4 Draw, Play, and Discard Piles
 
 - Increase `pileCardWidth` when reclaimed height allows.
-- Increase `playPileCardWidth` when reclaimed width/height allows.
-- The Play Pile remains visually central.
+- The Play Pile must be materially larger than its current implementation.
+- Increase `playPileCardWidth` as much as practical without breaking the three-pile center layout.
+- The Play Pile is a primary gameplay focus and should receive higher sizing priority than decorative spacing.
+- The Play Pile should be as close as practical to local hand-card size.
 - Continue showing up to the 3 most recent Play Pile cards.
-- Preserve readable rank/suit information on underlying visible Play Pile cards.
+- Preserve light horizontal overlap.
+- Keep the newest/top card visually dominant.
+- Preserve readable rank/suit information on underlying visible cards.
+- Reposition or resize the Play Pile count badge if it obscures card information.
 - Draw Pile count and Play Pile count must remain readable and must not obscure critical card information.
-- Enlarged pile cards must not overlap the local Player / Playing row.
+- Enlarged Play Pile cards must not overlap:
+  - Draw Pile
+  - Discard Pile
+  - `Pick Up`
+  - local Player / Playing row
 
 ## 6. `GameScreenMetrics` Requirements
 
@@ -239,7 +248,7 @@ Do not change:
 - turn order
 - direction logic
 - Bomb logic
-- 10-clear logic
+- 10 clear logic
 - Joker logic
 - forced pickup logic
 - voluntary pickup logic
@@ -289,6 +298,8 @@ This refresh is complete only when:
 - Local setup cards are visibly easier to read.
 - Opponent cards are visibly easier to read where responsive space permits.
 - Central pile cards are visibly easier to read where responsive space permits.
+- Play Pile cards are materially larger than the previous implementation.
+- The Play Pile is visually more prominent than the Draw and Discard piles.
 - Rank/suit indexes remain readable.
 - All cards preserve one shared aspect ratio.
 - Horizontal hand scrolling still works for large hands.
@@ -360,7 +371,9 @@ The Play Pile remains the central gameplay focus and should be easier to read.
 
 Required:
 
-- Increase `playPileCardWidth` materially where layout allows.
+- The Play Pile must be materially larger than its current implementation.
+- Increase `playPileCardWidth` as much as practical without breaking the three-pile center layout.
+- The Play Pile should be as close as practical to local hand-card size.
 - Continue displaying up to the 3 most recent cards.
 - Preserve light horizontal overlap so underlying cards remain identifiable.
 - Keep the newest/top card visually dominant.
@@ -374,7 +387,7 @@ Required:
 
 Priority rule:
 
-- The Play Pile should be as close as practical to local hand-card size without breaking the three-pile center layout.
+- The Play Pile is a primary gameplay focus and should receive higher sizing priority than decorative spacing.
 
 ### 13.4 Metric Rebalancing for This Pass
 
@@ -407,7 +420,8 @@ Verify all of the following:
 - no system-UI overlap
 - opponent cards are visibly larger in 2- and 3-player layouts
 - opponent cards enlarge where feasible in 4- and 5-player layouts
-- Play Pile cards are visibly larger
+- Play Pile cards are materially larger than the previous implementation
+- the Play Pile is visually more prominent than the Draw and Discard piles
 - up to 3 recent Play Pile cards remain understandable
 - no opponent overlap
 - no opponent-to-center overlap
