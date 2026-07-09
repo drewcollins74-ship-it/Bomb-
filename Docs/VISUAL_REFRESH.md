@@ -279,3 +279,38 @@ Before considering the task complete:
 5. Verify face-up and face-down cards at local, opponent, draw-pile, Play-Pile, and discard-pile sizes.
 6. Verify no overlap with Play and Pick Up controls.
 7. Review the diff for accidental gameplay changes.
+
+## 13. Safe-Area and Top Header Spacing
+
+The visual refresh must use the space immediately below the actual iPhone safe-area boundary efficiently.
+
+Required:
+
+- Audit the active-game view hierarchy for duplicate top-safe-area accounting.
+- Determine whether a parent container already positions content below the top safe area before adding any explicit top inset.
+- The effective top safe-area inset must be counted exactly once.
+- Inspect at minimum:
+  - `geometry.safeAreaInsets.top`
+  - `.safeAreaPadding(.top)`
+  - `.safeAreaInset(edge: .top)`
+  - `.padding(.top, ...)`
+  - custom `topPadding`
+  - fixed `headerHeight`
+  - internal vertical padding inside `header(metrics:)`
+  - top-level stack spacing
+  - parent safe-area behavior
+  - `ignoresSafeArea` usage
+- Do not leave a second safe-area-sized blank band below the actual safe-area boundary.
+- Position the header controls as high as practical while remaining below system UI.
+- Keep only a small intentional visual gap between the safe-area boundary and the header row.
+- Do not use an arbitrary negative Y offset or device-specific magic number as the primary fix.
+- Reclaimed vertical space should benefit gameplay readability, especially local human cards and the Play Pile.
+
+Acceptance criteria:
+
+- no duplicate top inset remains
+- header is materially closer to the safe-area boundary than before
+- no status-bar or Dynamic Island overlap occurs
+- reclaimed height is not converted into new decorative whitespace
+- 2-through-5-player layouts remain supported
+- `Bomb/Game.swift` remains unchanged
