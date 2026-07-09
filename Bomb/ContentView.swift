@@ -1819,6 +1819,10 @@ struct GameScreenMetrics {
         safeHeight < 720
     }
 
+    private var isVeryShortScreen: Bool {
+        safeHeight < 680
+    }
+
     var outerPadding: CGFloat {
         clamp(safeWidth * 0.035, min: 10, max: 16)
     }
@@ -1832,7 +1836,7 @@ struct GameScreenMetrics {
     }
 
     var sectionSpacing: CGFloat {
-        clamp(safeHeight * 0.004, min: 3, max: 6)
+        clamp(safeHeight * 0.003, min: 2, max: 4)
     }
 
     private var availableHeight: CGFloat {
@@ -1840,7 +1844,7 @@ struct GameScreenMetrics {
     }
 
     var headerHeight: CGFloat {
-        clamp(safeHeight * 0.052, min: 40, max: 44)
+        clamp(safeHeight * 0.048, min: 38, max: 40)
     }
 
     var playerHeight: CGFloat {
@@ -1848,7 +1852,7 @@ struct GameScreenMetrics {
     }
 
     var centerHeight: CGFloat {
-        clamp(safeHeight * (opponentRows > 1 ? 0.225 : 0.25), min: 144, max: 205)
+        clamp(safeHeight * (opponentRows > 1 ? 0.215 : 0.245), min: opponentRows > 1 ? 150 : 176, max: opponentRows > 1 ? 172 : 198)
     }
 
     var opponentsHeight: CGFloat {
@@ -1863,11 +1867,19 @@ struct GameScreenMetrics {
     }
 
     private var minimumPlayerHeight: CGFloat {
-        isShortScreen ? 212 : 242
+        if opponentRows > 1 {
+            if isVeryShortScreen {
+                return 260
+            }
+
+            return isShortScreen ? 272 : 292
+        }
+
+        return isShortScreen ? 212 : 242
     }
 
     var panelPadding: CGFloat {
-        clamp(safeHeight * 0.008, min: 4, max: 7)
+        clamp(safeHeight * 0.006, min: 3, max: 5)
     }
 
     var compactPadding: CGFloat {
@@ -1879,7 +1891,7 @@ struct GameScreenMetrics {
     }
 
     var iconButtonSize: CGFloat {
-        clamp(headerHeight, min: 40, max: 44)
+        clamp(headerHeight, min: 38, max: 40)
     }
 
     var titleFontSize: CGFloat {
@@ -1950,7 +1962,7 @@ struct GameScreenMetrics {
     }
 
     var opponentsInnerSpacing: CGFloat {
-        clamp(safeHeight * 0.005, min: 2, max: 5)
+        clamp(safeHeight * 0.003, min: 1, max: 3)
     }
 
     var opponentSpacing: CGFloat {
@@ -1958,7 +1970,7 @@ struct GameScreenMetrics {
     }
 
     var opponentRowSpacing: CGFloat {
-        clamp(safeHeight * 0.006, min: 4, max: 6)
+        clamp(safeHeight * 0.004, min: 3, max: 4)
     }
 
     var opponentColumns: Int {
@@ -1997,7 +2009,7 @@ struct GameScreenMetrics {
         case 2:
             maxWidth = 58
         default:
-            maxWidth = 54
+            maxWidth = 48
         }
 
         return clamp((tileWidth - 8) / 3, min: 24, max: maxWidth)
@@ -2017,7 +2029,7 @@ struct GameScreenMetrics {
         case 2:
             maxWidth = 58
         default:
-            maxWidth = 54
+            maxWidth = 48
         }
 
         return clamp(min(opponentWidthBasedCardWidth, heightBased), min: 24, max: maxWidth)
