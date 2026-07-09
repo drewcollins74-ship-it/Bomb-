@@ -1828,11 +1828,11 @@ struct GameScreenMetrics {
     }
 
     var topPadding: CGFloat {
-        safeAreaInsets.top
+        clamp(safeHeight * 0.004, min: 2, max: 5)
     }
 
     var bottomPadding: CGFloat {
-        safeAreaInsets.bottom + clamp(safeHeight * 0.004, min: 2, max: 5)
+        clamp(safeHeight * 0.004, min: 2, max: 5)
     }
 
     var sectionSpacing: CGFloat {
@@ -1840,7 +1840,7 @@ struct GameScreenMetrics {
     }
 
     private var availableHeight: CGFloat {
-        safeHeight - topPadding + safeAreaInsets.top - bottomPadding + safeAreaInsets.bottom - sectionSpacing * 3
+        safeHeight - topPadding - bottomPadding - sectionSpacing * 3
     }
 
     var headerHeight: CGFloat {
