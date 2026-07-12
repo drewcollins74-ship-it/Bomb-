@@ -69,6 +69,11 @@ struct Game {
             return nil
         }
 
+        if playPile.isEmpty,
+           playValue(for: cards) == .joker {
+            return nil
+        }
+
         let completedPile = playPile + cards
         let completedBomb = hasTrailingBomb(in: completedPile)
         let clearedWithTen = containsTen(cards)
@@ -625,14 +630,23 @@ struct Game {
         forPlayerAt playerIndex: Int,
         refillsHand: Bool
     ) -> Bool {
-        playPile.append(contentsOf: selectedCards)
-        updateRankRestriction(afterPlaying: selectedCards)
+        let wasPlayPileEmpty = playPile.isEmpty
+        let isEmptyPileJokerPlay = wasPlayPileEmpty && playValue(for: selectedCards) == .joker
 
-        if jokerCount(in: selectedCards).isMultiple(of: 2) == false {
+        if isEmptyPileJokerPlay {
+            discardPile.append(contentsOf: selectedCards)
+            currentRankRestriction = nil
+        } else {
+            playPile.append(contentsOf: selectedCards)
+            updateRankRestriction(afterPlaying: selectedCards)
+        }
+
+        if isEmptyPileJokerPlay == false,
+           jokerCount(in: selectedCards).isMultiple(of: 2) == false {
             reverseDirection()
         }
 
-        let completedBomb = hasTrailingBomb()
+        let completedBomb = isEmptyPileJokerPlay ? false : hasTrailingBomb()
         let clearedWithTen = containsTen(selectedCards)
         let clearsPile = clearedWithTen || completedBomb
 
@@ -644,7 +658,8 @@ struct Game {
             playerName: players[playerIndex].name,
             playedCards: selectedCards,
             clearedWithTen: clearedWithTen,
-            completedBomb: completedBomb
+            completedBomb: completedBomb,
+            discardedEmptyPileJoker: isEmptyPileJokerPlay
         )
 
         if refillsHand {
@@ -657,7 +672,7 @@ struct Game {
             return true
         }
 
-        if clearsPile {
+        if clearsPile || isEmptyPileJokerPlay {
             currentPlayerIndex = playerIndex
         } else {
             advanceTurn()
@@ -692,6 +707,8 @@ struct Game {
         switch chosenValue {
         case .normal:
             selectedCards = matchingCards
+        case .joker where playPile.isEmpty:
+            selectedCards = [chosenCard]
         case .two, .ten, .joker:
             let neededForBomb = 4 - trailingMatchCount(for: chosenValue)
             if (1...matchingCards.count).contains(neededForBomb) {
@@ -846,9 +863,14 @@ struct Game {
         playerName: String,
         playedCards: [PlayingCard],
         clearedWithTen: Bool,
-        completedBomb: Bool
+        completedBomb: Bool,
+        discardedEmptyPileJoker: Bool
     ) -> String {
         let message = "\(playerName) played \(playDescription(for: playedCards))"
+
+        if discardedEmptyPileJoker {
+            return "\(message) to an empty Play Pile and went again"
+        }
 
         if completedBomb {
             return "\(message) and made a Bomb"
