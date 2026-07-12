@@ -22,7 +22,7 @@ Card collections:
 
 - Draw Pile: undealt cards remaining after setup.
 - Play Pile: active cards currently in play.
-- Discard Pile: cards permanently cleared from active play by a 10 or Bomb.
+- Discard Pile: cards permanently cleared from active play by a 10, Bomb, or a Joker played onto an empty Play Pile.
 
 ### Starting the Game
 
@@ -43,7 +43,8 @@ Once the first player makes an actual play, all normal special-card rules apply 
 
 - Playing a 2 resets the playable-rank restriction.
 - Playing a 10 clears the Play Pile and gives that player another turn.
-- Playing a Joker reverses direction only.
+- Playing a Joker onto a non-empty Play Pile reverses direction only.
+- Playing a Joker onto an empty Play Pile sends that Joker directly to the Discard Pile and gives that player another turn.
 - Completing four consecutive cards of the same rank creates a Bomb.
 
 ## 2. Rank Order
@@ -63,7 +64,7 @@ Normal rank order:
 - A player may play one or more hand cards together only when all selected cards share the same rank.
 - Mixed ranks cannot be played together.
 - 2, 10, and Joker are always playable.
-- The effective playable rank can differ from the physical top card because Joker does not reset the restriction.
+- The effective playable rank can differ from the physical top card because a Joker played onto a non-empty Play Pile does not reset the restriction.
 - Example: if a 7 is played, then a Joker is played, the Joker is physically on top but the effective playable rank remains 7.
 
 ## 4. Multiple-Card Plays
@@ -92,19 +93,26 @@ Normal rank order:
 ### Joker
 
 - Always playable.
-- Remains on the Play Pile.
-- Does not clear the pile.
-- Reverses turn direction only.
-- Does not reset the playable-rank restriction.
-- The previous effective playable-rank restriction remains active after a Joker.
-- Each Joker causes one reversal.
-- An even number of Jokers played together produces no net reversal.
-- An odd number of Jokers played together produces a net reversal.
+- When played onto an empty Play Pile, it behaves like a 10:
+  - The Joker moves immediately to the Discard Pile.
+  - The Play Pile remains empty.
+  - Turn direction does not reverse.
+  - The same player goes again.
+- When played onto a non-empty Play Pile, its normal Joker behavior applies:
+  - It remains on the Play Pile.
+  - It does not clear the pile.
+  - It reverses turn direction only.
+  - It does not reset the playable-rank restriction.
+  - The previous effective playable-rank restriction remains active.
+- For Jokers played together onto a non-empty Play Pile, each Joker causes one reversal.
+- An even number of Jokers played together onto a non-empty Play Pile produces no net reversal.
+- An odd number of Jokers played together onto a non-empty Play Pile produces a net reversal.
 
 Important distinction:
 
 - 2 resets the playable-rank restriction.
-- Joker does not reset the playable-rank restriction.
+- A Joker played onto a non-empty Play Pile does not reset the playable-rank restriction.
+- A Joker played onto an empty Play Pile leaves no active playable-rank restriction because the Play Pile remains empty.
 
 ## 6. Bomb Rule
 
@@ -136,7 +144,8 @@ Play Pile:
 Discard Pile:
 
 - Contains cards permanently cleared from active play.
-- Receives cards only when the Play Pile is cleared by a 10 or Bomb.
+- Receives the Play Pile when it is cleared by a 10 or Bomb.
+- Receives a Joker played onto an empty Play Pile without moving any other cards.
 
 Pickup moves Play Pile cards into a player's hand, not to the Discard Pile.
 
@@ -180,7 +189,8 @@ Pickup:
 - Turns advance through all actual players.
 - Turn order supports any configured player count from 2 to 5.
 - Direction can be forward or reversed.
-- Joker reverses direction.
+- A Joker played onto a non-empty Play Pile reverses direction.
+- A Joker played onto an empty Play Pile does not reverse direction and gives the same player another turn.
 - 10 gives the same player another turn.
 - Bomb gives the same player another turn.
 - Computer turns must continue through the actual turn order.
@@ -257,7 +267,8 @@ Rules:
 - All special effects still apply:
   - 2 resets the playable-rank restriction.
   - 10 clears the Play Pile and grants an extra turn.
-  - Joker reverses direction only.
+  - Joker reverses direction when played onto a non-empty Play Pile.
+  - Joker moves directly to the Discard Pile and grants an extra turn when played onto an empty Play Pile.
   - Bomb clears the Play Pile and grants an extra turn.
 
 ## 17. Illegal Face-Down Reveal
@@ -276,8 +287,8 @@ Exact sequence:
 ## 18. Phase Transitions and Extra Turns
 
 - Final face-up card played normally: the next player acts.
-- Final face-up card played as a 10 or Bomb: the same player immediately enters face-down phase.
-- Legal face-down 10 or Bomb: the same player chooses another remaining face-down card.
+- Final face-up card played as a 10, Bomb, or Joker onto an empty Play Pile: the same player immediately enters face-down phase.
+- Legal face-down 10, Bomb, or Joker played onto an empty Play Pile: the same player chooses another remaining face-down card.
 - Pickup always returns the player to hand phase while preserving remaining setup cards.
 - Extra turns do not skip phase eligibility rules.
 
@@ -287,7 +298,8 @@ Exact sequence:
 - Resolve any resulting special effect first:
   - 2 reset.
   - 10 clear.
-  - Joker direction reversal.
+  - Joker direction reversal when played onto a non-empty Play Pile.
+  - Joker discard and extra turn when played onto an empty Play Pile.
   - Bomb clear.
 - An illegal face-down reveal cannot produce a win.
 - A winning player has:
@@ -335,9 +347,14 @@ The rules above are authoritative. The current implementation should be checked 
   - Relevant file: `Bomb/Game.swift`
   - Mismatch: current `bestComputerHandPlay(in:)` groups every card matching the chosen `PlayValue`, including all matching 2s, 10s, and Jokers.
 
+- Rule: A Joker played onto an empty Play Pile moves directly to the Discard Pile, leaves the Play Pile empty, does not reverse direction, and gives the same player another turn.
+  - Relevant file: `Bomb/Game.swift`
+  - Mismatch: implementation must be checked and updated to distinguish an empty Play Pile from normal Joker behavior on a non-empty Play Pile.
+
 ## 23. Rule Change Log
 
 - 2026-07-06: Initial authoritative gameplay specification created.
 - 2026-07-06: Added random dealer selection, left-of-dealer first turn, opening Play Pile seed card, and explicit special opening seed-card behavior.
 - 2026-07-06: Added required computer hand behavior to play all cards of the chosen rank together as one play.
 - 2026-07-06: Refined computer grouping strategy so ordinary ranks are grouped, while 2s, 10s, and Jokers normally play one at a time unless the minimum matching group completes a Bomb.
+- 2026-07-12: Added the rule that a Joker played onto an empty Play Pile behaves like a 10: it moves directly to the Discard Pile, leaves the Play Pile empty, does not reverse direction, and grants the same player another turn.
